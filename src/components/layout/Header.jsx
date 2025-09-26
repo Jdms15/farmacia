@@ -4,11 +4,139 @@ import { Bell, User, LogOut, Package, Menu, X } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useAlerts } from '../../hooks/useAlerts'
 import Button from '../ui/Button'
-import NotificationsPanel from './NotificationsPanel'
+
+// Panel de notificaciones simplificado integrado
+const SimpleNotificationsPanel = () => {
+  const { alerts } = useAlerts()
+  const [isOpen, setIsOpen] = useState(false)
+  const totalAlerts = alerts.nearExpiry.length + alerts.lowStock.length
+
+  return (
+    <div className="relative">
+      {/* Botón de notificaciones */}
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className="relative p-2 text-gray-600 hover:text-gray-900 transition-colors"
+        aria-label="Alertas"
+      >
+        <Bell size={20} />
+        {totalAlerts > 0 && (
+          <span className="absolute -top-1 -right-1 bg-red-500 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center animate-pulse">
+            {totalAlerts > 99 ? '99+' : totalAlerts}
+          </span>
+        )}
+      </button>
+
+      {/* Panel de alertas */}
+      {isOpen && (
+        <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-lg shadow-xl border border-gray-200 z-50 max-h-[500px] overflow-hidden flex flex-col">
+          {/* Header */}
+          <div className="p-4 border-b border-gray-200 bg-gray-50">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Alertas Activas
+              </h3>
+              <button
+                onClick={() => setIsOpen(false)}
+                className="text-gray-400 hover:text-gray-600 transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <p className="text-sm text-gray-600 mt-1">
+              {totalAlerts} alerta{totalAlerts !== 1 ? 's' : ''} requiere{totalAlerts === 1 ? '' : 'n'} atención
+            </p>
+          </div>
+
+          {/* Lista de alertas */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {/* Productos próximos a vencer */}
+            {alerts.nearExpiry.length > 0 && (
+              <div className="mb-4">
+                <h4 className="text-sm font-semibold text-yellow-700 mb-2">
+                  ⚠️ Próximos a vencer ({alerts.nearExpiry.length})
+                </h4>
+                <div className="space-y-2">
+                  {alerts.nearExpiry.slice(0, 5).map((product) => {
+                    const daysToExpiry = Math.ceil(
+                      (new Date(product.fecha_vencimiento) - new Date()) / (1000 * 60 * 60 * 24)
+                    )
+                    return (
+                      <div key={product.id} className="p-2 bg-yellow-50 rounded-lg border border-yellow-200">
+                        <p className="font-medium text-sm text-gray-900">{product.nombre}</p>
+                        <p className="text-xs text-gray-600">{product.laboratorio}</p>
+                        <p className="text-xs text-yellow-700 mt-1">
+                          Vence en {daysToExpiry} día{daysToExpiry !== 1 ? 's' : ''} - Lote: {product.lote}
+                        </p>
+                      </div>
+                    )
+                  })}
+                  {alerts.nearExpiry.length > 5 && (
+                    <p className="text-xs text-gray-500 text-center">
+                      ... y {alerts.nearExpiry.length - 5} más
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Productos con bajo stock */}
+            {alerts.lowStock.length > 0 && (
+              <div>
+                <h4 className="text-sm font-semibold text-red-700 mb-2">
+                  📉 Bajo stock ({alerts.lowStock.length})
+                </h4>
+                <div className="space-y-2">
+                  {alerts.lowStock.slice(0, 5).map((product) => (
+                    <div key={product.id} className="p-2 bg-red-50 rounded-lg border border-red-200">
+                      <p className="font-medium text-sm text-gray-900">{product.nombre}</p>
+                      <p className="text-xs text-gray-600">{product.laboratorio}</p>
+                      <p className="text-xs text-red-700 mt-1">
+                        Stock: {product.cantidad}/{product.stock_minimo} - {product.ubicacion}
+                      </p>
+                    </div>
+                  ))}
+                  {alerts.lowStock.length > 5 && (
+                    <p className="text-xs text-gray-500 text-center">
+                      ... y {alerts.lowStock.length - 5} más
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Sin alertas */}
+            {totalAlerts === 0 && (
+              <div className="text-center py-8">
+                <Bell className="mx-auto h-12 w-12 text-gray-300 mb-3" />
+                <p className="text-gray-500">No hay alertas activas</p>
+                <p className="text-sm text-gray-400 mt-1">
+                  Todo está bajo control
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Footer con acciones */}
+          {totalAlerts > 0 && (
+            <div className="p-3 border-t border-gray-200 bg-gray-50">
+              <a
+                href="/productos"
+                className="block w-full text-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm font-medium"
+                onClick={() => setIsOpen(false)}
+              >
+                Ver inventario completo
+              </a>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
 
 const Header = ({ onMenuToggle }) => {
   const { user, profile, signOut } = useAuth()
-  const { totalAlerts } = useAlerts()
   const [showUserMenu, setShowUserMenu] = useState(false)
 
   return (
@@ -45,8 +173,8 @@ const Header = ({ onMenuToggle }) => {
 
         {/* Lado derecho - Acciones del usuario */}
         <div className="flex items-center space-x-2 sm:space-x-4">
-          {/* Notificaciones */}
-          <NotificationsPanel />
+          {/* Panel de notificaciones simplificado */}
+          <SimpleNotificationsPanel />
 
           {/* Info del usuario - Desktop */}
           <div className="hidden sm:flex items-center space-x-3">

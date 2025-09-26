@@ -2,9 +2,6 @@
 import { supabase } from './supabase'
 import { productService } from './productService'
 import { movementService } from './movementService'
-import * as XLSX from 'xlsx'
-import jsPDF from 'jspdf'
-import 'jspdf-autotable'
 
 export const reportService = {
   // Generar reporte de inventario
@@ -118,298 +115,401 @@ export const reportService = {
     }
   },
 
-  // Exportar a Excel
+  // Exportar a Excel (usando método alternativo sin XLSX)
   exportToExcel(data, filename) {
-    const worksheet = XLSX.utils.json_to_sheet(data)
-    const workbook = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(workbook, worksheet, 'Datos')
-
-    // Ajustar anchos de columna
-    const maxWidth = 20
-    const wscols = Object.keys(data[0] || {}).map(() => ({ wch: maxWidth }))
-    worksheet['!cols'] = wscols
-
-    // Descargar archivo
-    XLSX.writeFile(workbook, `${filename}_${new Date().toISOString().split('T')[0]}.xlsx`)
-    
-    return { success: true }
+    try {
+      // Convertir a CSV como alternativa
+      const csvContent = this.convertToCSV(data)
+      const blob = new Blob([csvContent], { type: 'application/vnd.ms-excel' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${filename}_${new Date().toISOString().split('T')[0]}.xls`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      
+      return { success: true }
+    } catch (error) {
+      console.error('Error exporting to Excel:', error)
+      return { success: false, error: error.message }
+    }
   },
 
-  // Exportar movimientos a Excel con múltiples hojas
+  // Exportar movimientos a Excel
   exportMovementsToExcel(data, summary, startDate, endDate) {
-    const workbook = XLSX.utils.book_new()
-
-    // Hoja de resumen
-    const summaryData = [
-      ['REPORTE DE MOVIMIENTOS'],
-      [''],
-      ['Período:', `${startDate} a ${endDate}`],
-      [''],
-      ['RESUMEN'],
-      ['Total de movimientos:', summary.totalMovimientos],
-      ['Total entradas:', summary.totalEntradas],
-      ['Total salidas:', summary.totalSalidas],
-      ['Unidades ingresadas:', summary.unidadesEntrada],
-      ['Unidades retiradas:', summary.unidadesSalida],
-      [''],
-      ['Generado:', new Date().toLocaleString('es-CO')]
-    ]
-    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData)
-    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Resumen')
-
-    // Hoja de movimientos
-    const movementsSheet = XLSX.utils.json_to_sheet(data)
-    XLSX.utils.book_append_sheet(workbook, movementsSheet, 'Movimientos')
-
-    // Descargar
-    XLSX.writeFile(workbook, `Movimientos_${startDate}_${endDate}.xlsx`)
-    
-    return { success: true }
+    try {
+      // Crear contenido CSV con resumen
+      let csvContent = 'REPORTE DE MOVIMIENTOS\n\n'
+      csvContent += `Período:,${startDate} a ${endDate}\n\n`
+      csvContent += 'RESUMEN\n'
+      csvContent += `Total de movimientos:,${summary.totalMovimientos}\n`
+      csvContent += `Total entradas:,${summary.totalEntradas}\n`
+      csvContent += `Total salidas:,${summary.totalSalidas}\n`
+      csvContent += `Unidades ingresadas:,${summary.unidadesEntrada}\n`
+      csvContent += `Unidades retiradas:,${summary.unidadesSalida}\n\n`
+      csvContent += 'DETALLE DE MOVIMIENTOS\n'
+      csvContent += this.convertToCSV(data)
+      
+      const blob = new Blob([csvContent], { type: 'application/vnd.ms-excel' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `Movimientos_${startDate}_${endDate}.xls`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      
+      return { success: true }
+    } catch (error) {
+      console.error('Error exporting movements:', error)
+      return { success: false, error: error.message }
+    }
   },
 
   // Exportar a CSV
   exportToCSV(data, filename) {
-    const headers = Object.keys(data[0] || {})
-    const csvContent = [
-      headers.join(','),
-      ...data.map(row => headers.map(header => `"${row[header] || ''}"`).join(','))
-    ].join('\n')
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-    const link = document.createElement('a')
-    link.href = URL.createObjectURL(blob)
-    link.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`
-    link.click()
-    
-    return { success: true }
+    try {
+      const csvContent = this.convertToCSV(data)
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      
+      return { success: true }
+    } catch (error) {
+      console.error('Error exporting to CSV:', error)
+      return { success: false, error: error.message }
+    }
   },
 
-  // Exportar inventario a PDF
+  // Convertir datos a CSV
+  convertToCSV(data) {
+    if (!data || data.length === 0) return ''
+    
+    const headers = Object.keys(data[0])
+    const csvContent = [
+      headers.join(','),
+      ...data.map(row => 
+        headers.map(header => {
+          const value = row[header]
+          // Escapar valores con comas o saltos de línea
+          if (typeof value === 'string' && (value.includes(',') || value.includes('\n'))) {
+            return `"${value.replace(/"/g, '""')}"`
+          }
+          return value || ''
+        }).join(',')
+      )
+    ].join('\n')
+    
+    // Agregar BOM para Excel
+    return '\uFEFF' + csvContent
+  },
+
+  // Exportar inventario a PDF (versión simplificada)
   exportInventoryToPDF(data) {
-    const doc = new jsPDF('landscape')
-    
-    // Título
-    doc.setFontSize(18)
-    doc.text('Reporte de Inventario', 14, 20)
-    
-    // Fecha
-    doc.setFontSize(10)
-    doc.text(`Generado: ${new Date().toLocaleString('es-CO')}`, 14, 30)
-    
-    // Tabla
-    doc.autoTable({
-      head: [['Nombre', 'Laboratorio', 'Lote', 'Cantidad', 'Vencimiento', 'Ubicación', 'Estado']],
-      body: data.map(item => [
-        item.Nombre,
-        item.Laboratorio,
-        item.Lote,
-        item.Cantidad,
-        item.Vencimiento,
-        item.Ubicación,
-        item.Estado
-      ]),
-      startY: 35,
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [59, 130, 246] }
-    })
-    
-    // Guardar
-    doc.save(`Inventario_${new Date().toISOString().split('T')[0]}.pdf`)
-    
-    return { success: true }
+    try {
+      // Crear contenido HTML
+      let htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Reporte de Inventario</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { color: #333; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #3B82F6; color: white; }
+            tr:nth-child(even) { background-color: #f2f2f2; }
+            .date { color: #666; font-size: 14px; }
+          </style>
+        </head>
+        <body>
+          <h1>Reporte de Inventario</h1>
+          <p class="date">Generado: ${new Date().toLocaleString('es-CO')}</p>
+          <table>
+            <tr>
+              <th>Nombre</th>
+              <th>Laboratorio</th>
+              <th>Lote</th>
+              <th>Cantidad</th>
+              <th>Vencimiento</th>
+              <th>Ubicación</th>
+              <th>Estado</th>
+            </tr>
+            ${data.map(item => `
+              <tr>
+                <td>${item.Nombre}</td>
+                <td>${item.Laboratorio}</td>
+                <td>${item.Lote}</td>
+                <td>${item.Cantidad}</td>
+                <td>${item.Vencimiento}</td>
+                <td>${item.Ubicación}</td>
+                <td>${item.Estado}</td>
+              </tr>
+            `).join('')}
+          </table>
+        </body>
+        </html>
+      `
+      
+      // Abrir en nueva ventana para imprimir
+      const printWindow = window.open('', '', 'height=600,width=800')
+      printWindow.document.write(htmlContent)
+      printWindow.document.close()
+      printWindow.print()
+      
+      return { success: true }
+    } catch (error) {
+      console.error('Error exporting to PDF:', error)
+      return { success: false, error: error.message }
+    }
   },
 
   // Exportar movimientos a PDF
   exportMovementsToPDF(data, summary, startDate, endDate) {
-    const doc = new jsPDF()
-    
-    // Título
-    doc.setFontSize(18)
-    doc.text('Reporte de Movimientos', 14, 20)
-    
-    // Período
-    doc.setFontSize(12)
-    doc.text(`Período: ${startDate} a ${endDate}`, 14, 30)
-    
-    // Resumen
-    doc.setFontSize(10)
-    doc.text(`Total movimientos: ${summary.totalMovimientos}`, 14, 40)
-    doc.text(`Entradas: ${summary.totalEntradas} (${summary.unidadesEntrada} unidades)`, 14, 47)
-    doc.text(`Salidas: ${summary.totalSalidas} (${summary.unidadesSalida} unidades)`, 14, 54)
-    
-    // Tabla
-    doc.autoTable({
-      head: [['Fecha', 'Tipo', 'Producto', 'Cantidad', 'Usuario', 'Motivo']],
-      body: data.map(item => [
-        item.Fecha,
-        item.Tipo,
-        item.Producto,
-        item.Cantidad,
-        item.Usuario,
-        item.Motivo
-      ]),
-      startY: 65,
-      styles: { fontSize: 8 },
-      headStyles: { fillColor: [59, 130, 246] }
-    })
-    
-    // Guardar
-    doc.save(`Movimientos_${startDate}_${endDate}.pdf`)
-    
-    return { success: true }
+    try {
+      let htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Reporte de Movimientos</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { color: #333; }
+            .summary { background: #f5f5f5; padding: 15px; margin: 20px 0; border-radius: 5px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #3B82F6; color: white; }
+            tr:nth-child(even) { background-color: #f2f2f2; }
+          </style>
+        </head>
+        <body>
+          <h1>Reporte de Movimientos</h1>
+          <p>Período: ${startDate} a ${endDate}</p>
+          
+          <div class="summary">
+            <h3>Resumen</h3>
+            <p>Total movimientos: ${summary.totalMovimientos}</p>
+            <p>Entradas: ${summary.totalEntradas} (${summary.unidadesEntrada} unidades)</p>
+            <p>Salidas: ${summary.totalSalidas} (${summary.unidadesSalida} unidades)</p>
+          </div>
+          
+          <table>
+            <tr>
+              <th>Fecha</th>
+              <th>Tipo</th>
+              <th>Producto</th>
+              <th>Cantidad</th>
+              <th>Usuario</th>
+              <th>Motivo</th>
+            </tr>
+            ${data.map(item => `
+              <tr>
+                <td>${item.Fecha}</td>
+                <td>${item.Tipo}</td>
+                <td>${item.Producto}</td>
+                <td>${item.Cantidad}</td>
+                <td>${item.Usuario}</td>
+                <td>${item.Motivo}</td>
+              </tr>
+            `).join('')}
+          </table>
+        </body>
+        </html>
+      `
+      
+      const printWindow = window.open('', '', 'height=600,width=800')
+      printWindow.document.write(htmlContent)
+      printWindow.document.close()
+      printWindow.print()
+      
+      return { success: true }
+    } catch (error) {
+      console.error('Error exporting to PDF:', error)
+      return { success: false, error: error.message }
+    }
   },
 
   // Exportar alertas a PDF
   exportAlertsToPDF(alertsData) {
-    const doc = new jsPDF()
-    let yPosition = 20
-    
-    // Título
-    doc.setFontSize(18)
-    doc.text('Reporte de Alertas', 14, yPosition)
-    yPosition += 15
-    
-    // Fecha
-    doc.setFontSize(10)
-    doc.text(`Generado: ${new Date().toLocaleString('es-CO')}`, 14, yPosition)
-    yPosition += 15
-    
-    // Productos vencidos
-    if (alertsData.expired.length > 0) {
-      doc.setFontSize(14)
-      doc.setTextColor(220, 38, 38) // Rojo
-      doc.text(`Productos Vencidos (${alertsData.expired.length})`, 14, yPosition)
-      doc.setTextColor(0, 0, 0)
-      yPosition += 10
+    try {
+      let htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Reporte de Alertas</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 20px; }
+            h1 { color: #333; }
+            h2 { margin-top: 30px; }
+            .expired { color: #DC2626; }
+            .warning { color: #F59E0B; }
+            .danger { color: #EF4444; }
+            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { color: white; }
+            .expired-table th { background-color: #DC2626; }
+            .warning-table th { background-color: #F59E0B; }
+            .danger-table th { background-color: #EF4444; }
+          </style>
+        </head>
+        <body>
+          <h1>Reporte de Alertas</h1>
+          <p>Generado: ${new Date().toLocaleString('es-CO')}</p>
+      `
       
-      doc.autoTable({
-        head: [['Producto', 'Laboratorio', 'Lote', 'Venció', 'Ubicación']],
-        body: alertsData.expired.map(item => [
-          item.nombre,
-          item.laboratorio,
-          item.lote,
-          new Date(item.fecha_vencimiento).toLocaleDateString('es-CO'),
-          item.ubicacion
-        ]),
-        startY: yPosition,
-        styles: { fontSize: 8 },
-        headStyles: { fillColor: [220, 38, 38] }
-      })
+      // Productos vencidos
+      if (alertsData.expired.length > 0) {
+        htmlContent += `
+          <h2 class="expired">Productos Vencidos (${alertsData.expired.length})</h2>
+          <table class="expired-table">
+            <tr>
+              <th>Producto</th>
+              <th>Laboratorio</th>
+              <th>Lote</th>
+              <th>Venció</th>
+              <th>Ubicación</th>
+            </tr>
+            ${alertsData.expired.map(item => `
+              <tr>
+                <td>${item.nombre}</td>
+                <td>${item.laboratorio}</td>
+                <td>${item.lote}</td>
+                <td>${new Date(item.fecha_vencimiento).toLocaleDateString('es-CO')}</td>
+                <td>${item.ubicacion}</td>
+              </tr>
+            `).join('')}
+          </table>
+        `
+      }
       
-      yPosition = doc.lastAutoTable.finalY + 15
+      // Próximos a vencer
+      if (alertsData.nearExpiry.length > 0) {
+        htmlContent += `
+          <h2 class="warning">Próximos a Vencer (${alertsData.nearExpiry.length})</h2>
+          <table class="warning-table">
+            <tr>
+              <th>Producto</th>
+              <th>Laboratorio</th>
+              <th>Lote</th>
+              <th>Vence</th>
+              <th>Días restantes</th>
+            </tr>
+            ${alertsData.nearExpiry.map(item => {
+              const daysToExpiry = Math.ceil((new Date(item.fecha_vencimiento) - new Date()) / (1000 * 60 * 60 * 24))
+              return `
+                <tr>
+                  <td>${item.nombre}</td>
+                  <td>${item.laboratorio}</td>
+                  <td>${item.lote}</td>
+                  <td>${new Date(item.fecha_vencimiento).toLocaleDateString('es-CO')}</td>
+                  <td>${daysToExpiry}</td>
+                </tr>
+              `
+            }).join('')}
+          </table>
+        `
+      }
+      
+      // Bajo stock
+      if (alertsData.lowStock.length > 0) {
+        htmlContent += `
+          <h2 class="danger">Bajo Stock (${alertsData.lowStock.length})</h2>
+          <table class="danger-table">
+            <tr>
+              <th>Producto</th>
+              <th>Laboratorio</th>
+              <th>Stock Actual</th>
+              <th>Stock Mínimo</th>
+              <th>Diferencia</th>
+            </tr>
+            ${alertsData.lowStock.map(item => `
+              <tr>
+                <td>${item.nombre}</td>
+                <td>${item.laboratorio}</td>
+                <td>${item.cantidad}</td>
+                <td>${item.stock_minimo}</td>
+                <td>${item.stock_minimo - item.cantidad}</td>
+              </tr>
+            `).join('')}
+          </table>
+        `
+      }
+      
+      htmlContent += '</body></html>'
+      
+      const printWindow = window.open('', '', 'height=600,width=800')
+      printWindow.document.write(htmlContent)
+      printWindow.document.close()
+      printWindow.print()
+      
+      return { success: true }
+    } catch (error) {
+      console.error('Error exporting alerts to PDF:', error)
+      return { success: false, error: error.message }
     }
-    
-    // Productos próximos a vencer
-    if (alertsData.nearExpiry.length > 0) {
-      doc.setFontSize(14)
-      doc.setTextColor(245, 158, 11) // Amarillo
-      doc.text(`Próximos a Vencer (${alertsData.nearExpiry.length})`, 14, yPosition)
-      doc.setTextColor(0, 0, 0)
-      yPosition += 10
-      
-      doc.autoTable({
-        head: [['Producto', 'Laboratorio', 'Lote', 'Vence', 'Días restantes']],
-        body: alertsData.nearExpiry.map(item => {
-          const daysToExpiry = Math.ceil((new Date(item.fecha_vencimiento) - new Date()) / (1000 * 60 * 60 * 24))
-          return [
-            item.nombre,
-            item.laboratorio,
-            item.lote,
-            new Date(item.fecha_vencimiento).toLocaleDateString('es-CO'),
-            daysToExpiry
-          ]
-        }),
-        startY: yPosition,
-        styles: { fontSize: 8 },
-        headStyles: { fillColor: [245, 158, 11] }
-      })
-      
-      yPosition = doc.lastAutoTable.finalY + 15
-    }
-    
-    // Productos con bajo stock
-    if (alertsData.lowStock.length > 0 && yPosition < 250) {
-      doc.setFontSize(14)
-      doc.setTextColor(239, 68, 68) // Rojo
-      doc.text(`Bajo Stock (${alertsData.lowStock.length})`, 14, yPosition)
-      doc.setTextColor(0, 0, 0)
-      yPosition += 10
-      
-      doc.autoTable({
-        head: [['Producto', 'Laboratorio', 'Stock Actual', 'Stock Mínimo', 'Diferencia']],
-        body: alertsData.lowStock.map(item => [
-          item.nombre,
-          item.laboratorio,
-          item.cantidad,
-          item.stock_minimo,
-          item.stock_minimo - item.cantidad
-        ]),
-        startY: yPosition,
-        styles: { fontSize: 8 },
-        headStyles: { fillColor: [239, 68, 68] }
-      })
-    }
-    
-    // Guardar
-    doc.save(`Alertas_${new Date().toISOString().split('T')[0]}.pdf`)
-    
-    return { success: true }
   },
 
   // Exportar alertas a Excel
   exportAlertsToExcel(alertsData) {
-    const workbook = XLSX.utils.book_new()
-
-    // Hoja de productos vencidos
-    if (alertsData.expired.length > 0) {
-      const expiredData = alertsData.expired.map(item => ({
-        'Producto': item.nombre,
-        'Laboratorio': item.laboratorio,
-        'Lote': item.lote,
-        'Fecha Vencimiento': new Date(item.fecha_vencimiento).toLocaleDateString('es-CO'),
-        'Ubicación': item.ubicacion,
-        'Cantidad': item.cantidad
-      }))
-      const expiredSheet = XLSX.utils.json_to_sheet(expiredData)
-      XLSX.utils.book_append_sheet(workbook, expiredSheet, 'Vencidos')
+    try {
+      let csvContent = 'REPORTE DE ALERTAS\n'
+      csvContent += `Generado: ${new Date().toLocaleString('es-CO')}\n\n`
+      
+      // Productos vencidos
+      if (alertsData.expired.length > 0) {
+        csvContent += `PRODUCTOS VENCIDOS (${alertsData.expired.length})\n`
+        csvContent += 'Producto,Laboratorio,Lote,Fecha Vencimiento,Ubicación,Cantidad\n'
+        alertsData.expired.forEach(item => {
+          csvContent += `${item.nombre},${item.laboratorio},${item.lote},${new Date(item.fecha_vencimiento).toLocaleDateString('es-CO')},${item.ubicacion},${item.cantidad}\n`
+        })
+        csvContent += '\n'
+      }
+      
+      // Próximos a vencer
+      if (alertsData.nearExpiry.length > 0) {
+        csvContent += `PRÓXIMOS A VENCER (${alertsData.nearExpiry.length})\n`
+        csvContent += 'Producto,Laboratorio,Lote,Fecha Vencimiento,Días para vencer,Ubicación,Cantidad\n'
+        alertsData.nearExpiry.forEach(item => {
+          const daysToExpiry = Math.ceil((new Date(item.fecha_vencimiento) - new Date()) / (1000 * 60 * 60 * 24))
+          csvContent += `${item.nombre},${item.laboratorio},${item.lote},${new Date(item.fecha_vencimiento).toLocaleDateString('es-CO')},${daysToExpiry},${item.ubicacion},${item.cantidad}\n`
+        })
+        csvContent += '\n'
+      }
+      
+      // Bajo stock
+      if (alertsData.lowStock.length > 0) {
+        csvContent += `BAJO STOCK (${alertsData.lowStock.length})\n`
+        csvContent += 'Producto,Laboratorio,Stock Actual,Stock Mínimo,Diferencia,Ubicación\n'
+        alertsData.lowStock.forEach(item => {
+          csvContent += `${item.nombre},${item.laboratorio},${item.cantidad},${item.stock_minimo},${item.stock_minimo - item.cantidad},${item.ubicacion}\n`
+        })
+      }
+      
+      const blob = new Blob(['\uFEFF' + csvContent], { type: 'application/vnd.ms-excel' })
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `Alertas_${new Date().toISOString().split('T')[0]}.xls`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+      
+      return { success: true }
+    } catch (error) {
+      console.error('Error exporting alerts to Excel:', error)
+      return { success: false, error: error.message }
     }
-
-    // Hoja de próximos a vencer
-    if (alertsData.nearExpiry.length > 0) {
-      const nearExpiryData = alertsData.nearExpiry.map(item => {
-        const daysToExpiry = Math.ceil((new Date(item.fecha_vencimiento) - new Date()) / (1000 * 60 * 60 * 24))
-        return {
-          'Producto': item.nombre,
-          'Laboratorio': item.laboratorio,
-          'Lote': item.lote,
-          'Fecha Vencimiento': new Date(item.fecha_vencimiento).toLocaleDateString('es-CO'),
-          'Días para vencer': daysToExpiry,
-          'Ubicación': item.ubicacion,
-          'Cantidad': item.cantidad
-        }
-      })
-      const nearExpirySheet = XLSX.utils.json_to_sheet(nearExpiryData)
-      XLSX.utils.book_append_sheet(workbook, nearExpirySheet, 'Próximos a Vencer')
-    }
-
-    // Hoja de bajo stock
-    if (alertsData.lowStock.length > 0) {
-      const lowStockData = alertsData.lowStock.map(item => ({
-        'Producto': item.nombre,
-        'Laboratorio': item.laboratorio,
-        'Stock Actual': item.cantidad,
-        'Stock Mínimo': item.stock_minimo,
-        'Diferencia': item.stock_minimo - item.cantidad,
-        'Ubicación': item.ubicacion
-      }))
-      const lowStockSheet = XLSX.utils.json_to_sheet(lowStockData)
-      XLSX.utils.book_append_sheet(workbook, lowStockSheet, 'Bajo Stock')
-    }
-
-    // Descargar
-    XLSX.writeFile(workbook, `Alertas_${new Date().toISOString().split('T')[0]}.xlsx`)
-    
-    return { success: true }
   },
 
   // Obtener estado del producto
