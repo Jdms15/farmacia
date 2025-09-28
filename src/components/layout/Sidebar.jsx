@@ -6,7 +6,7 @@ import {
   Package, 
   ArrowLeftRight, 
   FileText, 
-  Settings,
+  Users,
   AlertTriangle,
   X
 } from 'lucide-react'
@@ -41,11 +41,12 @@ const Sidebar = ({ onClose, isMobile }) => {
     }
   ]
 
+  // Agregar usuarios solo para administradores
   if (isAdmin) {
     navigationItems.push({
-      name: 'Configuración',
-      href: '/configuracion',
-      icon: Settings
+      name: 'Usuarios',
+      href: '/usuarios',
+      icon: Users
     })
   }
 
@@ -106,6 +107,11 @@ const Sidebar = ({ onClose, isMobile }) => {
                   {totalAlerts}
                 </span>
               )}
+              {item.name === 'Usuarios' && isAdmin && (
+                <span className="ml-auto bg-purple-500 text-xs rounded-full px-2 py-1">
+                  Admin
+                </span>
+              )}
             </NavLink>
           ))}
         </nav>
@@ -114,8 +120,14 @@ const Sidebar = ({ onClose, isMobile }) => {
       {/* Footer del sidebar */}
       <div className="mt-auto p-4 border-t border-gray-800">
         <div className="text-xs text-gray-400 text-center">
-          <p>© 2024 InvFarm</p>
+          <p>© 2025 InvFarm</p>
           <p>Versión 1.0.0</p>
+          <p>Developed by Bytes-co</p>
+          {isAdmin && (
+            <p className="text-purple-400 font-medium mt-1">
+              🛡️ Modo Administrador
+            </p>
+          )}
         </div>
       </div>
     </aside>

@@ -11,10 +11,11 @@ import Modal from '../components/ui/Modal'
 import toast from 'react-hot-toast'
 
 const Movements = () => {
-  const { products } = useProducts()
+  const { products, fetchProducts } = useProducts()
   const [movements, setMovements] = useState([])
   const [loading, setLoading] = useState(true)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
   const [filters, setFilters] = useState({
     productoId: '',
     tipo: '',
@@ -41,24 +42,56 @@ const Movements = () => {
   }
 
   const handleCreateMovement = async (movementData) => {
+    // Prevenir múltiples envíos
+    if (isCreating) {
+      return { success: false, error: 'Ya se está procesando un movimiento' }
+    }
+
+    setIsCreating(true)
+    
     try {
+      console.log('Creando movimiento:', movementData)
+      
       const result = await movementService.createMovement(movementData)
-      if (result.error) throw result.error
+      
+      if (result.error) {
+        throw result.error
+      }
 
       toast.success('Movimiento registrado exitosamente')
+      
+      // Cerrar modal y actualizar datos
       setIsModalOpen(false)
-      fetchMovements()
-      return { success: true }
+      
+      // Refrescar tanto movimientos como productos
+      await Promise.all([
+        fetchMovements(),
+        fetchProducts()
+      ])
+      
+      return { success: true, data: result.data }
     } catch (error) {
       console.error('Error creating movement:', error)
-      toast.error('Error al registrar movimiento')
+      
+      // Mostrar mensaje de error específico
+      const errorMessage = error.message || 'Error al registrar movimiento'
+      toast.error(errorMessage)
+      
       return { success: false, error }
+    } finally {
+      setIsCreating(false)
     }
   }
 
   const handleExport = () => {
     // Implementar exportación
     toast.info('Función de exportación en desarrollo')
+  }
+
+  const handleCloseModal = () => {
+    if (!isCreating) {
+      setIsModalOpen(false)
+    }
   }
 
   return (
@@ -69,11 +102,20 @@ const Movements = () => {
           <p className="text-gray-600">Registro de entradas y salidas</p>
         </div>
         <div className="flex space-x-3">
-          <Button variant="outline" onClick={handleExport} className="flex items-center space-x-2">
+          <Button 
+            variant="outline" 
+            onClick={handleExport} 
+            className="flex items-center space-x-2"
+            disabled={isCreating}
+          >
             <Download size={20} />
             <span>Exportar</span>
           </Button>
-          <Button onClick={() => setIsModalOpen(true)} className="flex items-center space-x-2">
+          <Button 
+            onClick={() => setIsModalOpen(true)} 
+            className="flex items-center space-x-2"
+            disabled={isCreating}
+          >
             <Plus size={20} />
             <span>Nuevo Movimiento</span>
           </Button>
@@ -90,14 +132,15 @@ const Movements = () => {
 
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={handleCloseModal}
         title="Nuevo Movimiento"
         size="md"
+        showCloseButton={!isCreating}
       >
         <MovementForm
           products={products}
           onSave={handleCreateMovement}
-          onCancel={() => setIsModalOpen(false)}
+          onCancel={handleCloseModal}
         />
       </Modal>
     </div>

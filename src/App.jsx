@@ -1,4 +1,4 @@
-// src/App.jsx
+// src/App.jsx - Actualizado con ruta de usuarios
 import React from 'react'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
@@ -8,6 +8,7 @@ import Dashboard from './pages/Dashboard'
 import Products from './pages/Products'
 import Movements from './pages/Movements'
 import Reports from './pages/Reports'
+import UsersAdmin from './pages/UsersAdmin'
 import Login from './pages/Login'
 import NotFound from './pages/NotFound'
 
@@ -32,6 +33,16 @@ function App() {
             <Route path="productos" element={<Products />} />
             <Route path="movimientos" element={<Movements />} />
             <Route path="reportes" element={<Reports />} />
+            
+            {/* Ruta solo para administradores */}
+            <Route 
+              path="usuarios" 
+              element={
+                <ProtectedRoute requireAdmin={true}>
+                  <UsersAdmin />
+                </ProtectedRoute>
+              } 
+            />
           </Route>
 
           {/* Ruta 404 */}

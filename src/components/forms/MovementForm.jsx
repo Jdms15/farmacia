@@ -1,5 +1,5 @@
 // src/components/forms/MovementForm.jsx
-import React from 'react'
+import React, { useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { yupResolver } from '@hookform/resolvers/yup'
 import * as yup from 'yup'
@@ -16,12 +16,13 @@ const schema = yup.object({
 
 const MovementForm = ({ products, onSave, onCancel }) => {
   const { profile } = useAuth()
+  const [isSubmitting, setIsSubmitting] = useState(false)
   
   const {
     register,
     handleSubmit,
     watch,
-    formState: { errors, isSubmitting }
+    formState: { errors }
   } = useForm({
     resolver: yupResolver(schema),
     defaultValues: {
@@ -34,12 +35,29 @@ const MovementForm = ({ products, onSave, onCancel }) => {
   const selectedProduct = products.find(p => p.id === selectedProductId)
 
   const onSubmit = async (data) => {
-    const movementData = {
-      ...data,
-      usuario: profile?.nombre || 'Usuario'
-    }
+    // Prevenir doble envío
+    if (isSubmitting) return
     
-    await onSave(movementData)
+    setIsSubmitting(true)
+    
+    try {
+      const movementData = {
+        ...data,
+        usuario: profile?.nombre || 'Usuario'
+      }
+      
+      const result = await onSave(movementData)
+      
+      // Solo proceder si fue exitoso
+      if (result?.success) {
+        // El componente padre manejará el cierre del modal
+        return
+      }
+    } catch (error) {
+      console.error('Error en onSubmit:', error)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   return (
@@ -51,7 +69,8 @@ const MovementForm = ({ products, onSave, onCancel }) => {
         </label>
         <select
           {...register('producto_id')}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+          disabled={isSubmitting}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
         >
           <option value="">Selecciona un producto</option>
           {products.map((product) => (
@@ -100,7 +119,8 @@ const MovementForm = ({ products, onSave, onCancel }) => {
           </label>
           <select
             {...register('tipo')}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+            disabled={isSubmitting}
+            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
           >
             <option value="entrada">Entrada</option>
             <option value="salida">Salida</option>
@@ -115,6 +135,7 @@ const MovementForm = ({ products, onSave, onCancel }) => {
           label="Cantidad"
           type="number"
           min="1"
+          disabled={isSubmitting}
           {...register('cantidad', { valueAsNumber: true })}
           error={errors.cantidad?.message}
           required
@@ -128,9 +149,10 @@ const MovementForm = ({ products, onSave, onCancel }) => {
         </label>
         <textarea
           {...register('motivo')}
+          disabled={isSubmitting}
           rows={3}
           placeholder="Describe el motivo del movimiento (opcional)"
-          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+          className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
         />
         {errors.motivo && (
           <p className="text-sm text-red-600 mt-1">{errors.motivo.message}</p>
@@ -143,12 +165,14 @@ const MovementForm = ({ products, onSave, onCancel }) => {
           type="button"
           variant="outline"
           onClick={onCancel}
+          disabled={isSubmitting}
         >
           Cancelar
         </Button>
         <Button
           type="submit"
           loading={isSubmitting}
+          disabled={isSubmitting}
         >
           Registrar Movimiento
         </Button>

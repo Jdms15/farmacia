@@ -1,11 +1,11 @@
-// src/services/reportService.js
+// src/services/reportService.js - Versión Solo CSV
 import { supabase } from './supabase'
 import { productService } from './productService'
 import { movementService } from './movementService'
 
 export const reportService = {
   // Generar reporte de inventario
-  async generateInventoryReport(format = 'pdf') {
+  async generateInventoryReport(format = 'csv') {
     try {
       const { data: products, error } = await productService.getProducts()
       if (error) throw error
@@ -24,12 +24,10 @@ export const reportService = {
         'Estado': this.getProductStatus(product)
       }))
 
-      if (format === 'excel') {
-        return this.exportToExcel(reportData, 'Inventario_Completo')
+      if (format === 'excel' || format === 'csv') {
+        return this.exportToCSV(reportData, 'Inventario_Completo')
       } else if (format === 'pdf') {
         return this.exportInventoryToPDF(reportData)
-      } else if (format === 'csv') {
-        return this.exportToCSV(reportData, 'Inventario_Completo')
       }
 
       return { success: true, data: reportData }
@@ -40,7 +38,7 @@ export const reportService = {
   },
 
   // Generar reporte de movimientos
-  async generateMovementsReport(startDate, endDate, format = 'excel') {
+  async generateMovementsReport(startDate, endDate, format = 'csv') {
     try {
       const filters = {
         fechaInicio: startDate,
@@ -69,8 +67,8 @@ export const reportService = {
         unidadesSalida: movements.filter(m => m.tipo === 'salida').reduce((sum, m) => sum + m.cantidad, 0)
       }
 
-      if (format === 'excel') {
-        return this.exportMovementsToExcel(reportData, summary, startDate, endDate)
+      if (format === 'excel' || format === 'csv') {
+        return this.exportMovementsToCSV(reportData, summary, startDate, endDate)
       } else if (format === 'pdf') {
         return this.exportMovementsToPDF(reportData, summary, startDate, endDate)
       }
@@ -83,7 +81,7 @@ export const reportService = {
   },
 
   // Generar reporte de alertas
-  async generateAlertsReport(format = 'pdf') {
+  async generateAlertsReport(format = 'csv') {
     try {
       const [nearExpiryResult, lowStockResult] = await Promise.all([
         productService.getProductsNearExpiry(30),
@@ -102,10 +100,10 @@ export const reportService = {
         alertsData.expired = products.filter(p => new Date(p.fecha_vencimiento) < new Date())
       }
 
-      if (format === 'pdf') {
+      if (format === 'excel' || format === 'csv') {
+        return this.exportAlertsToCSV(alertsData)
+      } else if (format === 'pdf') {
         return this.exportAlertsToPDF(alertsData)
-      } else if (format === 'excel') {
-        return this.exportAlertsToExcel(alertsData)
       }
 
       return { success: true, data: alertsData }
@@ -115,77 +113,97 @@ export const reportService = {
     }
   },
 
-  // Exportar a Excel (usando método alternativo sin XLSX)
-  exportToExcel(data, filename) {
-    try {
-      // Convertir a CSV como alternativa
-      const csvContent = this.convertToCSV(data)
-      const blob = new Blob([csvContent], { type: 'application/vnd.ms-excel' })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `${filename}_${new Date().toISOString().split('T')[0]}.xls`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-      
-      return { success: true }
-    } catch (error) {
-      console.error('Error exporting to Excel:', error)
-      return { success: false, error: error.message }
-    }
-  },
-
-  // Exportar movimientos a Excel
-  exportMovementsToExcel(data, summary, startDate, endDate) {
-    try {
-      // Crear contenido CSV con resumen
-      let csvContent = 'REPORTE DE MOVIMIENTOS\n\n'
-      csvContent += `Período:,${startDate} a ${endDate}\n\n`
-      csvContent += 'RESUMEN\n'
-      csvContent += `Total de movimientos:,${summary.totalMovimientos}\n`
-      csvContent += `Total entradas:,${summary.totalEntradas}\n`
-      csvContent += `Total salidas:,${summary.totalSalidas}\n`
-      csvContent += `Unidades ingresadas:,${summary.unidadesEntrada}\n`
-      csvContent += `Unidades retiradas:,${summary.unidadesSalida}\n\n`
-      csvContent += 'DETALLE DE MOVIMIENTOS\n'
-      csvContent += this.convertToCSV(data)
-      
-      const blob = new Blob([csvContent], { type: 'application/vnd.ms-excel' })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `Movimientos_${startDate}_${endDate}.xls`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-      
-      return { success: true }
-    } catch (error) {
-      console.error('Error exporting movements:', error)
-      return { success: false, error: error.message }
-    }
-  },
-
   // Exportar a CSV
   exportToCSV(data, filename) {
     try {
       const csvContent = this.convertToCSV(data)
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `${filename}_${new Date().toISOString().split('T')[0]}.csv`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-      
+      const blob = new Blob([csvContent], { 
+        type: 'text/csv;charset=utf-8;' 
+      })
+      this.downloadFile(blob, `${filename}_${this.getDateString()}.csv`)
       return { success: true }
     } catch (error) {
       console.error('Error exporting to CSV:', error)
+      return { success: false, error: error.message }
+    }
+  },
+
+  // Exportar movimientos a CSV con resumen
+  exportMovementsToCSV(data, summary, startDate, endDate) {
+    try {
+      // Crear contenido CSV con resumen al inicio
+      let csvContent = 'REPORTE DE MOVIMIENTOS\n\n'
+      csvContent += `Período,${startDate} a ${endDate}\n`
+      csvContent += 'RESUMEN\n'
+      csvContent += `Total de movimientos,${summary.totalMovimientos}\n`
+      csvContent += `Total entradas,${summary.totalEntradas}\n`
+      csvContent += `Total salidas,${summary.totalSalidas}\n`
+      csvContent += `Unidades ingresadas,${summary.unidadesEntrada}\n`
+      csvContent += `Unidades retiradas,${summary.unidadesSalida}\n\n`
+      csvContent += 'DETALLE DE MOVIMIENTOS\n'
+      csvContent += this.convertToCSV(data)
+      
+      const blob = new Blob(['\uFEFF' + csvContent], { 
+        type: 'text/csv;charset=utf-8;' 
+      })
+      this.downloadFile(blob, `Movimientos_${startDate}_${endDate}.csv`)
+      
+      return { success: true }
+    } catch (error) {
+      console.error('Error exporting movements to CSV:', error)
+      return { success: false, error: error.message }
+    }
+  },
+
+  // Exportar alertas a CSV
+  exportAlertsToCSV(alertsData) {
+    try {
+      let csvContent = 'REPORTE DE ALERTAS\n'
+      csvContent += `Generado,${new Date().toLocaleString('es-CO')}\n\n`
+      
+      // Productos vencidos
+      if (alertsData.expired.length > 0) {
+        csvContent += `PRODUCTOS VENCIDOS (${alertsData.expired.length})\n`
+        csvContent += 'Producto,Laboratorio,Lote,Fecha Vencimiento,Ubicación,Cantidad\n'
+        alertsData.expired.forEach(item => {
+          csvContent += `"${item.nombre}","${item.laboratorio}","${item.lote}","${new Date(item.fecha_vencimiento).toLocaleDateString('es-CO')}","${item.ubicacion}",${item.cantidad}\n`
+        })
+        csvContent += '\n'
+      }
+      
+      // Próximos a vencer
+      if (alertsData.nearExpiry.length > 0) {
+        csvContent += `PRÓXIMOS A VENCER (${alertsData.nearExpiry.length})\n`
+        csvContent += 'Producto,Laboratorio,Lote,Fecha Vencimiento,Días para vencer,Ubicación,Cantidad\n'
+        alertsData.nearExpiry.forEach(item => {
+          const daysToExpiry = Math.ceil((new Date(item.fecha_vencimiento) - new Date()) / (1000 * 60 * 60 * 24))
+          csvContent += `"${item.nombre}","${item.laboratorio}","${item.lote}","${new Date(item.fecha_vencimiento).toLocaleDateString('es-CO')}",${daysToExpiry},"${item.ubicacion}",${item.cantidad}\n`
+        })
+        csvContent += '\n'
+      }
+      
+      // Bajo stock
+      if (alertsData.lowStock.length > 0) {
+        csvContent += `BAJO STOCK (${alertsData.lowStock.length})\n`
+        csvContent += 'Producto,Laboratorio,Stock Actual,Stock Mínimo,Diferencia,Ubicación\n'
+        alertsData.lowStock.forEach(item => {
+          csvContent += `"${item.nombre}","${item.laboratorio}",${item.cantidad},${item.stock_minimo},${item.stock_minimo - item.cantidad},"${item.ubicacion}"\n`
+        })
+      }
+      
+      // Si no hay alertas
+      if (alertsData.expired.length === 0 && alertsData.nearExpiry.length === 0 && alertsData.lowStock.length === 0) {
+        csvContent += 'No hay alertas activas en este momento\n'
+      }
+      
+      const blob = new Blob(['\uFEFF' + csvContent], { 
+        type: 'text/csv;charset=utf-8;' 
+      })
+      this.downloadFile(blob, `Alertas_${this.getDateString()}.csv`)
+      
+      return { success: true }
+    } catch (error) {
+      console.error('Error exporting alerts to CSV:', error)
       return { success: false, error: error.message }
     }
   },
@@ -200,8 +218,8 @@ export const reportService = {
       ...data.map(row => 
         headers.map(header => {
           const value = row[header]
-          // Escapar valores con comas o saltos de línea
-          if (typeof value === 'string' && (value.includes(',') || value.includes('\n'))) {
+          // Escapar valores con comas, comillas o saltos de línea
+          if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
             return `"${value.replace(/"/g, '""')}"`
           }
           return value || ''
@@ -209,14 +227,41 @@ export const reportService = {
       )
     ].join('\n')
     
-    // Agregar BOM para Excel
-    return '\uFEFF' + csvContent
+    return csvContent
   },
 
-  // Exportar inventario a PDF (versión simplificada)
+  // Función para descargar archivos
+  downloadFile(blob, filename) {
+    try {
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = filename
+      link.style.display = 'none'
+      
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      setTimeout(() => {
+        window.URL.revokeObjectURL(url)
+      }, 1000)
+      
+      console.log(`Archivo descargado: ${filename}`)
+    } catch (error) {
+      console.error('Error downloading file:', error)
+      throw error
+    }
+  },
+
+  // Obtener string de fecha
+  getDateString() {
+    return new Date().toISOString().split('T')[0]
+  },
+
+  // Exportar inventario a PDF
   exportInventoryToPDF(data) {
     try {
-      // Crear contenido HTML
       let htmlContent = `
         <!DOCTYPE html>
         <html>
@@ -224,17 +269,24 @@ export const reportService = {
           <title>Reporte de Inventario</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 20px; }
-            h1 { color: #333; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            h1 { color: #333; text-align: center; }
+            .header { text-align: center; margin-bottom: 30px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 11px; }
+            th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
             th { background-color: #3B82F6; color: white; }
             tr:nth-child(even) { background-color: #f2f2f2; }
             .date { color: #666; font-size: 14px; }
+            .summary { background: #f5f5f5; padding: 15px; margin: 20px 0; border-radius: 5px; }
           </style>
         </head>
         <body>
-          <h1>Reporte de Inventario</h1>
-          <p class="date">Generado: ${new Date().toLocaleString('es-CO')}</p>
+          <div class="header">
+            <h1>Reporte de Inventario Farmacéutico</h1>
+            <p class="date">Generado: ${new Date().toLocaleString('es-CO')}</p>
+            <div class="summary">
+              <strong>Total de productos: ${data.length}</strong>
+            </div>
+          </div>
           <table>
             <tr>
               <th>Nombre</th>
@@ -261,11 +313,14 @@ export const reportService = {
         </html>
       `
       
-      // Abrir en nueva ventana para imprimir
       const printWindow = window.open('', '', 'height=600,width=800')
       printWindow.document.write(htmlContent)
       printWindow.document.close()
-      printWindow.print()
+      printWindow.focus()
+      
+      setTimeout(() => {
+        printWindow.print()
+      }, 500)
       
       return { success: true }
     } catch (error) {
@@ -284,17 +339,17 @@ export const reportService = {
           <title>Reporte de Movimientos</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 20px; }
-            h1 { color: #333; }
+            h1 { color: #333; text-align: center; }
             .summary { background: #f5f5f5; padding: 15px; margin: 20px 0; border-radius: 5px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 11px; }
+            th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
             th { background-color: #3B82F6; color: white; }
             tr:nth-child(even) { background-color: #f2f2f2; }
           </style>
         </head>
         <body>
           <h1>Reporte de Movimientos</h1>
-          <p>Período: ${startDate} a ${endDate}</p>
+          <p style="text-align: center;">Período: ${startDate} a ${endDate}</p>
           
           <div class="summary">
             <h3>Resumen</h3>
@@ -330,7 +385,11 @@ export const reportService = {
       const printWindow = window.open('', '', 'height=600,width=800')
       printWindow.document.write(htmlContent)
       printWindow.document.close()
-      printWindow.print()
+      printWindow.focus()
+      
+      setTimeout(() => {
+        printWindow.print()
+      }, 500)
       
       return { success: true }
     } catch (error) {
@@ -349,13 +408,13 @@ export const reportService = {
           <title>Reporte de Alertas</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 20px; }
-            h1 { color: #333; }
+            h1 { color: #333; text-align: center; }
             h2 { margin-top: 30px; }
             .expired { color: #DC2626; }
             .warning { color: #F59E0B; }
             .danger { color: #EF4444; }
-            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 11px; }
+            th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
             th { color: white; }
             .expired-table th { background-color: #DC2626; }
             .warning-table th { background-color: #F59E0B; }
@@ -364,7 +423,7 @@ export const reportService = {
         </head>
         <body>
           <h1>Reporte de Alertas</h1>
-          <p>Generado: ${new Date().toLocaleString('es-CO')}</p>
+          <p style="text-align: center;">Generado: ${new Date().toLocaleString('es-CO')}</p>
       `
       
       // Productos vencidos
@@ -445,69 +504,25 @@ export const reportService = {
         `
       }
       
+      // Si no hay alertas
+      if (alertsData.expired.length === 0 && alertsData.nearExpiry.length === 0 && alertsData.lowStock.length === 0) {
+        htmlContent += '<p style="text-align: center; margin-top: 50px; color: #059669; font-size: 18px;"><strong>🎉 No hay alertas activas en este momento</strong></p>'
+      }
+      
       htmlContent += '</body></html>'
       
       const printWindow = window.open('', '', 'height=600,width=800')
       printWindow.document.write(htmlContent)
       printWindow.document.close()
-      printWindow.print()
+      printWindow.focus()
+      
+      setTimeout(() => {
+        printWindow.print()
+      }, 500)
       
       return { success: true }
     } catch (error) {
       console.error('Error exporting alerts to PDF:', error)
-      return { success: false, error: error.message }
-    }
-  },
-
-  // Exportar alertas a Excel
-  exportAlertsToExcel(alertsData) {
-    try {
-      let csvContent = 'REPORTE DE ALERTAS\n'
-      csvContent += `Generado: ${new Date().toLocaleString('es-CO')}\n\n`
-      
-      // Productos vencidos
-      if (alertsData.expired.length > 0) {
-        csvContent += `PRODUCTOS VENCIDOS (${alertsData.expired.length})\n`
-        csvContent += 'Producto,Laboratorio,Lote,Fecha Vencimiento,Ubicación,Cantidad\n'
-        alertsData.expired.forEach(item => {
-          csvContent += `${item.nombre},${item.laboratorio},${item.lote},${new Date(item.fecha_vencimiento).toLocaleDateString('es-CO')},${item.ubicacion},${item.cantidad}\n`
-        })
-        csvContent += '\n'
-      }
-      
-      // Próximos a vencer
-      if (alertsData.nearExpiry.length > 0) {
-        csvContent += `PRÓXIMOS A VENCER (${alertsData.nearExpiry.length})\n`
-        csvContent += 'Producto,Laboratorio,Lote,Fecha Vencimiento,Días para vencer,Ubicación,Cantidad\n'
-        alertsData.nearExpiry.forEach(item => {
-          const daysToExpiry = Math.ceil((new Date(item.fecha_vencimiento) - new Date()) / (1000 * 60 * 60 * 24))
-          csvContent += `${item.nombre},${item.laboratorio},${item.lote},${new Date(item.fecha_vencimiento).toLocaleDateString('es-CO')},${daysToExpiry},${item.ubicacion},${item.cantidad}\n`
-        })
-        csvContent += '\n'
-      }
-      
-      // Bajo stock
-      if (alertsData.lowStock.length > 0) {
-        csvContent += `BAJO STOCK (${alertsData.lowStock.length})\n`
-        csvContent += 'Producto,Laboratorio,Stock Actual,Stock Mínimo,Diferencia,Ubicación\n'
-        alertsData.lowStock.forEach(item => {
-          csvContent += `${item.nombre},${item.laboratorio},${item.cantidad},${item.stock_minimo},${item.stock_minimo - item.cantidad},${item.ubicacion}\n`
-        })
-      }
-      
-      const blob = new Blob(['\uFEFF' + csvContent], { type: 'application/vnd.ms-excel' })
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `Alertas_${new Date().toISOString().split('T')[0]}.xls`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      window.URL.revokeObjectURL(url)
-      
-      return { success: true }
-    } catch (error) {
-      console.error('Error exporting alerts to Excel:', error)
       return { success: false, error: error.message }
     }
   },
