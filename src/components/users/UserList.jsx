@@ -1,14 +1,11 @@
-// src/components/users/UserList.jsx
+// src/components/users/UserList.jsx - Versión segura
 import React, { useState } from 'react'
 import { 
   Edit, 
   Trash2, 
   Shield, 
   User, 
-  Key, 
-  UserX, 
-  UserCheck,
-  MoreVertical 
+  Mail
 } from 'lucide-react'
 import Table from '../ui/Table'
 import Badge from '../ui/Badge'
@@ -16,13 +13,14 @@ import Button from '../ui/Button'
 import Modal from '../ui/Modal'
 import Input from '../ui/Input'
 import { useAuth } from '../../hooks/useAuth'
+import { userService } from '../../services/userService'
+import toast from 'react-hot-toast'
 
-const UserList = ({ users, loading, onEdit, onDelete, onResetPassword, onToggleStatus }) => {
+const UserList = ({ users, loading, onEdit, onDelete }) => {
   const { user: currentUser } = useAuth()
   const [showResetModal, setShowResetModal] = useState(false)
   const [selectedUser, setSelectedUser] = useState(null)
-  const [newPassword, setNewPassword] = useState('')
-  const [isResetting, setIsResetting] = useState(false)
+  const [isSendingEmail, setIsSendingEmail] = useState(false)
 
   const formatDate = (dateString) => {
     if (!dateString) return 'Nunca'
@@ -36,31 +34,25 @@ const UserList = ({ users, loading, onEdit, onDelete, onResetPassword, onToggleS
   }
 
   const handleResetPassword = async () => {
-    if (!newPassword || newPassword.length < 6) {
+    if (!selectedUser?.email || selectedUser.email === 'No disponible') {
+      toast.error('Email no disponible para este usuario')
       return
     }
 
-    setIsResetting(true)
+    setIsSendingEmail(true)
     try {
-      await onResetPassword(selectedUser.id, newPassword)
+      const { error } = await userService.sendPasswordResetEmail(selectedUser.email)
+      
+      if (error) throw error
+      
+      toast.success(`Email de reseteo enviado a ${selectedUser.email}`)
       setShowResetModal(false)
       setSelectedUser(null)
-      setNewPassword('')
+    } catch (error) {
+      toast.error('Error enviando email: ' + error.message)
     } finally {
-      setIsResetting(false)
+      setIsSendingEmail(false)
     }
-  }
-
-  const openResetModal = (user) => {
-    setSelectedUser(user)
-    setNewPassword('')
-    setShowResetModal(true)
-  }
-
-  const closeResetModal = () => {
-    setShowResetModal(false)
-    setSelectedUser(null)
-    setNewPassword('')
   }
 
   const columns = [
@@ -97,15 +89,6 @@ const UserList = ({ users, loading, onEdit, onDelete, onResetPassword, onToggleS
       )
     },
     {
-      header: 'Estado',
-      key: 'banned_until',
-      render: (value) => (
-        <Badge variant={value ? 'danger' : 'success'}>
-          {value ? 'Deshabilitado' : 'Activo'}
-        </Badge>
-      )
-    },
-    {
       header: 'Creado',
       key: 'created_at',
       render: (value) => (
@@ -127,8 +110,7 @@ const UserList = ({ users, loading, onEdit, onDelete, onResetPassword, onToggleS
       header: 'Acciones',
       key: 'actions',
       render: (_, row) => {
-        const isCurrentUser = currentUser?.id === row.id
-        const isDisabled = !!row.banned_until
+        const isCurrentUserRow = currentUser?.id === row.id
         
         return (
           <div className="flex items-center space-x-2">
@@ -145,36 +127,24 @@ const UserList = ({ users, loading, onEdit, onDelete, onResetPassword, onToggleS
               <Edit size={14} />
             </Button>
 
-            {/* Resetear contraseña */}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={(e) => {
-                e.stopPropagation()
-                openResetModal(row)
-              }}
-              title="Resetear contraseña"
-            >
-              <Key size={14} />
-            </Button>
-
-            {/* Habilitar/Deshabilitar */}
-            {!isCurrentUser && (
+            {/* Resetear contraseña (enviar email) */}
+            {row.email && row.email !== 'No disponible' && (
               <Button
-                variant={isDisabled ? "success" : "outline"}
+                variant="outline"
                 size="sm"
                 onClick={(e) => {
                   e.stopPropagation()
-                  onToggleStatus(row.id, !isDisabled)
+                  setSelectedUser(row)
+                  setShowResetModal(true)
                 }}
-                title={isDisabled ? "Habilitar usuario" : "Deshabilitar usuario"}
+                title="Enviar email para resetear contraseña"
               >
-                {isDisabled ? <UserCheck size={14} /> : <UserX size={14} />}
+                <Mail size={14} />
               </Button>
             )}
 
             {/* Eliminar */}
-            {!isCurrentUser && (
+            {!isCurrentUserRow && (
               <Button
                 variant="danger"
                 size="sm"
@@ -208,6 +178,16 @@ const UserList = ({ users, loading, onEdit, onDelete, onResetPassword, onToggleS
   return (
     <>
       <div className="bg-white rounded-lg shadow">
+        {/* Información sobre limitaciones */}
+        <div className="p-4 bg-blue-50 border-b border-blue-200">
+          <div className="flex items-start space-x-3">
+            <Shield size={16} className="text-blue-600 mt-0.5" />
+            <div className="text-sm text-blue-800">
+              <p><strong>Nota de seguridad:</strong> En esta versión segura, el reseteo de contraseña se hace mediante email. El usuario recibirá un link para crear una nueva contraseña.</p>
+            </div>
+          </div>
+        </div>
+
         <Table
           columns={columns}
           data={users}
@@ -215,72 +195,50 @@ const UserList = ({ users, loading, onEdit, onDelete, onResetPassword, onToggleS
         />
       </div>
 
-      {/* Modal para resetear contraseña */}
+      {/* Modal para confirmar envío de email de reseteo */}
       <Modal
         isOpen={showResetModal}
-        onClose={closeResetModal}
+        onClose={() => {
+          setShowResetModal(false)
+          setSelectedUser(null)
+        }}
         title="Resetear Contraseña"
         size="sm"
       >
         <div className="space-y-4">
-          <div className="p-4 bg-yellow-50 rounded-lg border border-yellow-200">
+          <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
             <div className="flex items-center space-x-2">
-              <Key className="h-5 w-5 text-yellow-600" />
-              <p className="text-sm text-yellow-800">
-                Se cambiará la contraseña de <strong>{selectedUser?.nombre}</strong>
+              <Mail className="h-5 w-5 text-blue-600" />
+              <p className="text-sm text-blue-800">
+                Se enviará un email de recuperación a:
               </p>
             </div>
+            <p className="text-sm font-semibold text-blue-900 mt-2">
+              {selectedUser?.email}
+            </p>
+            <p className="text-xs text-blue-700 mt-2">
+              El usuario <strong>{selectedUser?.nombre}</strong> recibirá un link para crear una nueva contraseña.
+            </p>
           </div>
-
-          <Input
-            label="Nueva contraseña"
-            type="password"
-            value={newPassword}
-            onChange={(e) => setNewPassword(e.target.value)}
-            placeholder="Mínimo 6 caracteres"
-            disabled={isResetting}
-            required
-          />
-
-          {/* Indicador de fortaleza */}
-          {newPassword && (
-            <div className="flex items-center space-x-2">
-              <div className="flex-1 bg-gray-200 rounded-full h-2">
-                <div
-                  className={`h-2 rounded-full transition-all duration-300 ${
-                    newPassword.length < 6
-                      ? 'w-1/3 bg-red-500'
-                      : newPassword.length < 8
-                      ? 'w-2/3 bg-yellow-500'
-                      : 'w-full bg-green-500'
-                  }`}
-                />
-              </div>
-              <span className="text-xs text-gray-500">
-                {newPassword.length < 6
-                  ? 'Débil'
-                  : newPassword.length < 8
-                  ? 'Media'
-                  : 'Fuerte'}
-              </span>
-            </div>
-          )}
 
           <div className="flex justify-end space-x-3 pt-4">
             <Button
               type="button"
               variant="outline"
-              onClick={closeResetModal}
-              disabled={isResetting}
+              onClick={() => {
+                setShowResetModal(false)
+                setSelectedUser(null)
+              }}
+              disabled={isSendingEmail}
             >
               Cancelar
             </Button>
             <Button
               onClick={handleResetPassword}
-              loading={isResetting}
-              disabled={isResetting || newPassword.length < 6}
+              loading={isSendingEmail}
+              disabled={isSendingEmail}
             >
-              Cambiar Contraseña
+              Enviar Email
             </Button>
           </div>
         </div>

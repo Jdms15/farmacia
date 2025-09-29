@@ -1,37 +1,31 @@
-// src/services/userService.js - Versión optimizada
+// src/services/userService.js - Versión segura sin Service Role Key
 import { supabase } from './supabase'
 
-// Cache para evitar múltiples verificaciones
-let adminAccessCache = null
-let adminAccessChecked = false
-
 export const userService = {
-  // Verificar acceso admin una sola vez
-  async checkAdminAccess() {
-    if (adminAccessChecked) {
-      return adminAccessCache
-    }
-    
+  // Verificar si el usuario actual es admin
+  async isCurrentUserAdmin() {
     try {
-      // Intentar una operación simple del admin API
-      await supabase.auth.admin.listUsers({ page: 1, perPage: 1 })
-      adminAccessCache = true
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return false
+
+      const { data: profile } = await supabase
+        .from('perfiles')
+        .select('rol')
+        .eq('id', user.id)
+        .single()
+
+      return profile?.rol === 'admin'
     } catch (error) {
-      // Silenciar el error, es esperado en muchos entornos
-      adminAccessCache = false
+      console.error('Error verificando admin:', error)
+      return false
     }
-    
-    adminAccessChecked = true
-    return adminAccessCache
   },
 
-  // Obtener todos los usuarios - versión optimizada
+  // Obtener todos los usuarios (RLS permite a admins ver todos)
   async getUsers() {
     try {
-      // Verificar acceso admin primero
-      const hasAdminAccess = await this.checkAdminAccess()
+      console.log('📋 Obteniendo usuarios...')
       
-      // Obtener perfiles básicos
       const { data: profiles, error: profilesError } = await supabase
         .from('perfiles')
         .select('*')
@@ -39,152 +33,92 @@ export const userService = {
       
       if (profilesError) throw profilesError
 
-      // Si no hay admin access, usar versión simplificada
-      if (!hasAdminAccess) {
-        return this.getUsersSimple(profiles)
-      }
+      console.log(`✅ Usuarios encontrados: ${profiles?.length || 0}`)
 
-      // Si hay admin access, intentar obtener datos adicionales
-      const usersWithDetails = await Promise.all(
-        profiles.map(async (profile) => {
-          try {
-            const { data: authUser } = await supabase.auth.admin.getUserById(profile.id)
-            
-            return {
-              ...profile,
-              email: authUser?.user?.email || 'No disponible',
-              last_sign_in_at: authUser?.user?.last_sign_in_at || null,
-              email_confirmed_at: authUser?.user?.email_confirmed_at || null,
-              banned_until: authUser?.user?.banned_until || null
-            }
-          } catch {
-            // Si falla para un usuario específico, usar datos básicos
-            return {
-              ...profile,
-              email: 'No disponible',
-              last_sign_in_at: null,
-              email_confirmed_at: null,
-              banned_until: null
-            }
-          }
-        })
-      )
-      
-      return { data: usersWithDetails, error: null }
-    } catch (error) {
-      // Fallback a versión simple
-      console.warn('Admin API no disponible, usando versión básica')
-      return this.getUsersSimple()
-    }
-  },
-
-  // Versión simplificada que solo usa datos públicos
-  async getUsersSimple(profiles = null) {
-    try {
-      // Si no se pasaron perfiles, obtenerlos
-      if (!profiles) {
-        const { data, error } = await supabase
-          .from('perfiles')
-          .select('*')
-          .order('created_at', { ascending: false })
-        
-        if (error) throw error
-        profiles = data
-      }
-
-      // Obtener usuario actual para mostrar su email si es posible
+      // Sin Service Role Key, NO podemos obtener emails de auth
+      // Los usuarios solo verán "No disponible" excepto para su propio email
       const { data: { user: currentUser } } = await supabase.auth.getUser()
-      
-      const usersWithBasicInfo = profiles.map(profile => ({
-        ...profile,
-        email: currentUser?.id === profile.id ? currentUser.email : 'No disponible',
-        last_sign_in_at: null,
-        email_confirmed_at: null,
-        banned_until: null
-      }))
-      
-      return { data: usersWithBasicInfo, error: null }
+
+      const usersWithLimitedInfo = profiles.map((profile) => {
+        return {
+          ...profile,
+          email: currentUser?.id === profile.id ? currentUser.email : 'No disponible',
+          last_sign_in_at: null,
+          banned_until: null
+        }
+      })
+
+      return { data: usersWithLimitedInfo, error: null }
     } catch (error) {
-      console.error('Error en getUsersSimple:', error)
-      return { data: null, error }
+      console.error('Error obteniendo usuarios:', error)
+      return { data: [], error }
     }
   },
 
-  // Crear usuario - versión optimizada
+  // Crear usuario usando el auth de Supabase
   async createUser(userData) {
     try {
       const { email, password, nombre, rol } = userData
-      const hasAdminAccess = await this.checkAdminAccess()
       
-      let userId, userEmail
-      
-      if (hasAdminAccess) {
-        // Intentar usar Admin API
-        try {
-          const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-            email,
-            password,
-            email_confirm: true
-          })
-          
-          if (authError) throw authError
-          userId = authData.user.id
-          userEmail = authData.user.email
-        } catch (adminError) {
-          // Si falla admin API, usar signUp normal
-          const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-            email,
-            password
-          })
-          
-          if (signUpError) throw signUpError
-          if (!signUpData.user) throw new Error('No se pudo crear el usuario')
-          
-          userId = signUpData.user.id
-          userEmail = signUpData.user.email
-        }
-      } else {
-        // Usar signUp normal directamente
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email,
-          password
-        })
-        
-        if (signUpError) throw signUpError
-        if (!signUpData.user) throw new Error('No se pudo crear el usuario')
-        
-        userId = signUpData.user.id
-        userEmail = signUpData.user.email
+      console.log('🔧 Creando usuario...', { email, nombre, rol })
+
+      // Verificar que el usuario actual es admin
+      const isAdmin = await this.isCurrentUserAdmin()
+      if (!isAdmin) {
+        throw new Error('Solo los administradores pueden crear usuarios')
       }
-      
-      // Crear perfil
-      const { data: profileData, error: profileError } = await supabase
+
+      // Registrar nuevo usuario con signUp
+      // El trigger automáticamente creará el perfil
+      const { data: authData, error: authError } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            nombre,
+            rol
+          }
+        }
+      })
+
+      if (authError) throw authError
+      if (!authData.user) throw new Error('No se pudo crear el usuario')
+
+      console.log('✅ Usuario creado:', authData.user.id)
+
+      // Esperar un momento para que el trigger cree el perfil
+      await new Promise(resolve => setTimeout(resolve, 1000))
+
+      // Obtener el perfil recién creado
+      const { data: profile, error: profileError } = await supabase
         .from('perfiles')
-        .insert([{
-          id: userId,
-          nombre,
-          rol,
-          created_at: new Date().toISOString()
-        }])
-        .select()
+        .select('*')
+        .eq('id', authData.user.id)
         .single()
-      
+
       if (profileError) {
-        // Intentar limpiar el usuario creado
-        if (hasAdminAccess) {
-          try {
-            await supabase.auth.admin.deleteUser(userId)
-          } catch {}
+        console.warn('Perfil no encontrado inmediatamente, reintentando...')
+        // Reintentar después de otro segundo
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        
+        const { data: retryProfile } = await supabase
+          .from('perfiles')
+          .select('*')
+          .eq('id', authData.user.id)
+          .single()
+        
+        return {
+          data: { ...retryProfile, email: authData.user.email },
+          error: null
         }
-        throw profileError
       }
-      
-      return { 
-        data: { ...profileData, email: userEmail }, 
-        error: null 
+
+      return {
+        data: { ...profile, email: authData.user.email },
+        error: null
       }
     } catch (error) {
-      console.error('Error creating user:', error)
+      console.error('❌ Error creando usuario:', error)
       return { data: null, error }
     }
   },
@@ -192,10 +126,18 @@ export const userService = {
   // Actualizar usuario
   async updateUser(userId, updates) {
     try {
-      const { nombre, rol, email } = updates
+      const { nombre, rol } = updates
       
-      // Actualizar perfil
-      const { data: profileData, error: profileError } = await supabase
+      console.log('🔧 Actualizando usuario:', userId)
+
+      // Verificar permisos de admin
+      const isAdmin = await this.isCurrentUserAdmin()
+      if (!isAdmin) {
+        throw new Error('Solo los administradores pueden actualizar usuarios')
+      }
+
+      // Actualizar perfil (RLS permitirá solo a admins)
+      const { data, error } = await supabase
         .from('perfiles')
         .update({
           nombre,
@@ -205,109 +147,72 @@ export const userService = {
         .eq('id', userId)
         .select()
         .single()
-      
-      if (profileError) throw profileError
-      
-      // Actualizar email solo si hay admin access
-      if (email && email !== 'No disponible') {
-        const hasAdminAccess = await this.checkAdminAccess()
-        
-        if (hasAdminAccess) {
-          try {
-            await supabase.auth.admin.updateUserById(userId, { email })
-          } catch (emailError) {
-            console.warn('No se pudo actualizar email:', emailError.message)
-          }
-        }
-      }
-      
-      return { data: { ...profileData, email }, error: null }
+
+      if (error) throw error
+
+      console.log('✅ Usuario actualizado')
+      return { data, error: null }
     } catch (error) {
-      console.error('Error updating user:', error)
+      console.error('❌ Error actualizando usuario:', error)
       return { data: null, error }
     }
   },
 
-  // Eliminar usuario
+  // Eliminar usuario (usando función RPC)
   async deleteUser(userId) {
     try {
+      console.log('🔧 Eliminando usuario:', userId)
+
+      // Verificar que el usuario actual es admin
+      const isAdmin = await this.isCurrentUserAdmin()
+      if (!isAdmin) {
+        throw new Error('Solo los administradores pueden eliminar usuarios')
+      }
+
       // Verificar relaciones
       const [{ data: productos }, { data: movimientos }] = await Promise.all([
         supabase.from('productos').select('id').eq('user_id', userId).limit(1),
         supabase.from('movimientos').select('id').eq('user_id', userId).limit(1)
       ])
-      
+
       if (productos?.length > 0) {
         throw new Error('No se puede eliminar: el usuario tiene productos registrados')
       }
-      
+
       if (movimientos?.length > 0) {
         throw new Error('No se puede eliminar: el usuario tiene movimientos registrados')
       }
-      
-      // Eliminar perfil
-      const { error: profileError } = await supabase
-        .from('perfiles')
-        .delete()
-        .eq('id', userId)
-      
-      if (profileError) throw profileError
-      
-      // Intentar eliminar de auth si hay acceso admin
-      const hasAdminAccess = await this.checkAdminAccess()
-      if (hasAdminAccess) {
-        try {
-          await supabase.auth.admin.deleteUser(userId)
-        } catch (authError) {
-          console.warn('Usuario eliminado del perfil, pero no de auth:', authError.message)
-        }
-      }
-      
+
+      // Llamar a función RPC para eliminar (la crearemos)
+      const { error } = await supabase.rpc('delete_user_profile', {
+        user_id: userId
+      })
+
+      if (error) throw error
+
+      console.log('✅ Usuario eliminado')
       return { error: null }
     } catch (error) {
-      console.error('Error deleting user:', error)
+      console.error('❌ Error eliminando usuario:', error)
       return { error }
     }
   },
 
-  // Resetear contraseña - requiere admin access
-  async resetUserPassword(userId, newPassword) {
+  // Resetear contraseña (limitado - requiere email)
+  async sendPasswordResetEmail(email) {
     try {
-      const hasAdminAccess = await this.checkAdminAccess()
-      
-      if (!hasAdminAccess) {
-        throw new Error('Esta función requiere permisos de administrador del servidor')
-      }
-      
-      const { error } = await supabase.auth.admin.updateUserById(userId, { 
-        password: newPassword 
-      })
-      
-      if (error) throw error
-      return { error: null }
-    } catch (error) {
-      console.error('Error resetting password:', error)
-      return { error }
-    }
-  },
+      console.log('📧 Enviando email de reseteo a:', email)
 
-  // Cambiar estado - requiere admin access  
-  async toggleUserStatus(userId, disabled) {
-    try {
-      const hasAdminAccess = await this.checkAdminAccess()
-      
-      if (!hasAdminAccess) {
-        throw new Error('Esta función requiere permisos de administrador del servidor')
-      }
-      
-      const { error } = await supabase.auth.admin.updateUserById(userId, { 
-        banned_until: disabled ? '2099-12-31T23:59:59.999Z' : null
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`
       })
-      
+
       if (error) throw error
+
+      console.log('✅ Email enviado')
       return { error: null }
     } catch (error) {
-      console.error('Error toggling user status:', error)
+      console.error('❌ Error enviando email:', error)
       return { error }
     }
   },
@@ -318,40 +223,24 @@ export const userService = {
       const { data: users, error } = await supabase
         .from('perfiles')
         .select('rol, created_at')
-      
+
       if (error) throw error
-      
+
       const weekAgo = new Date()
       weekAgo.setDate(weekAgo.getDate() - 7)
-      
+
       const stats = {
         total: users.length,
         admins: users.filter(u => u.rol === 'admin').length,
         operators: users.filter(u => u.rol === 'operador').length,
         recentUsers: users.filter(u => new Date(u.created_at) > weekAgo).length
       }
-      
+
+      console.log('📊 Estadísticas:', stats)
       return { data: stats, error: null }
     } catch (error) {
-      console.error('Error getting user stats:', error)
+      console.error('Error obteniendo estadísticas:', error)
       return { data: null, error }
-    }
-  },
-
-  // Obtener capacidades disponibles
-  async getCapabilities() {
-    const hasAdminAccess = await this.checkAdminAccess()
-    
-    return {
-      canViewUsers: true,
-      canCreateUsers: true,
-      canEditUsers: true,
-      canDeleteUsers: true,
-      canResetPasswords: hasAdminAccess,
-      canToggleUserStatus: hasAdminAccess,
-      canViewEmails: hasAdminAccess,
-      canViewLastSignIn: hasAdminAccess,
-      hasFullAdminAccess: hasAdminAccess
     }
   }
 }

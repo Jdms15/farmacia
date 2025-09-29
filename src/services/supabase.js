@@ -1,6 +1,14 @@
+// src/services/supabase.js - Versión segura sin Service Role Key
 import { createClient } from '@supabase/supabase-js'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
-const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-export const supabase = createClient(supabaseUrl, supabaseKey)
+// Cliente único con anon key (seguro para frontend)
+export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+console.log('✅ Supabase configurado de forma segura:', {
+  url: supabaseUrl,
+  hasAnonKey: !!supabaseAnonKey,
+  secure: true
+})

@@ -1,7 +1,6 @@
-// src/store/authStore.js
+// src/store/authStore.js - Versión segura
 import { create } from 'zustand'
 import { supabase } from '../services/supabase'
-import { authService } from '../services/authService'
 
 export const useAuthStore = create((set, get) => ({
   user: null,
@@ -9,7 +8,7 @@ export const useAuthStore = create((set, get) => ({
   loading: true,
   initialized: false,
   
-  // Inicializar autenticación con mejor manejo de errores
+  // Inicializar autenticación
   initialize: async () => {
     // Evitar re-inicialización
     if (get().initialized) return
@@ -28,7 +27,11 @@ export const useAuthStore = create((set, get) => ({
       
       if (session?.user) {
         // Obtener perfil del usuario
-        const { data: profile, error: profileError } = await authService.getUserProfile(session.user.id)
+        const { data: profile, error: profileError } = await supabase
+          .from('perfiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single()
         
         if (profileError) {
           console.error('Error getting profile:', profileError)
@@ -79,11 +82,15 @@ export const useAuthStore = create((set, get) => ({
     }
   },
 
-  // Iniciar sesión con mejor manejo de errores
+  // Iniciar sesión
   signIn: async (email, password) => {
     try {
       set({ loading: true })
-      const { data, error } = await authService.signIn(email, password)
+      
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      })
       
       if (error) {
         console.error('Sign in error:', error)
@@ -99,7 +106,11 @@ export const useAuthStore = create((set, get) => ({
       if (data?.user) {
         // Obtener o crear perfil
         let profile = null
-        const { data: existingProfile, error: profileError } = await authService.getUserProfile(data.user.id)
+        const { data: existingProfile, error: profileError } = await supabase
+          .from('perfiles')
+          .select('*')
+          .eq('id', data.user.id)
+          .single()
         
         if (profileError || !existingProfile) {
           // Crear perfil si no existe
@@ -148,7 +159,18 @@ export const useAuthStore = create((set, get) => ({
   signUp: async (email, password, nombre) => {
     try {
       set({ loading: true })
-      const { data, error } = await authService.signUp(email, password, nombre)
+      
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: {
+            nombre,
+            rol: 'operador'
+          }
+        }
+      })
+      
       set({ loading: false })
       return { success: !error, error }
     } catch (error) {
@@ -162,7 +184,7 @@ export const useAuthStore = create((set, get) => ({
   signOut: async () => {
     try {
       set({ loading: true })
-      await authService.signOut()
+      await supabase.auth.signOut()
       set({ 
         user: null, 
         profile: null,
@@ -209,7 +231,12 @@ export const setupAuthListener = () => {
     if (event === 'SIGNED_IN' && session?.user) {
       // Solo actualizar si el usuario cambió
       if (currentUser?.id !== session.user.id) {
-        const { data: profile } = await authService.getUserProfile(session.user.id)
+        const { data: profile } = await supabase
+          .from('perfiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single()
+        
         useAuthStore.setState({ 
           user: session.user, 
           profile,

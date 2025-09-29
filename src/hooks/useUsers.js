@@ -1,4 +1,4 @@
-// src/hooks/useUsers.js
+// src/hooks/useUsers.js - Versión segura
 import { useEffect } from 'react'
 import { useUsersStore } from '../store/usersStore'
 import { useAuth } from './useAuth'
@@ -9,41 +9,33 @@ export const useUsers = () => {
     users,
     loading,
     stats,
-    hasAdminAccess,
-    checkAdminAccess,
     fetchUsers,
     createUser,
     updateUser,
     deleteUser,
-    resetPassword,
-    toggleUserStatus,
     fetchStats
   } = useUsersStore()
 
   useEffect(() => {
     // Solo cargar si es admin
     if (isAdmin) {
-      const initializeAdmin = async () => {
-        await checkAdminAccess()
+      const initializeUsers = async () => {
         await fetchUsers()
         await fetchStats()
       }
       
-      initializeAdmin()
+      initializeUsers()
     }
-  }, [isAdmin, checkAdminAccess, fetchUsers, fetchStats])
+  }, [isAdmin, fetchUsers, fetchStats])
 
   return {
     users,
     loading,
     stats,
-    hasAdminAccess,
     fetchUsers,
     createUser,
     updateUser,
     deleteUser,
-    resetPassword,
-    toggleUserStatus,
     fetchStats,
     canManageUsers: isAdmin
   }
