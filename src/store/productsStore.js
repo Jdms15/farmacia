@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 
 export const useProductsStore = create((set, get) => ({
   products: [],
+  filteredProducts: [],
   loading: false,
   filters: {
     search: '',
@@ -17,12 +18,12 @@ export const useProductsStore = create((set, get) => ({
   fetchProducts: async (customFilters = null) => {
     set({ loading: true })
     try {
-      const filtersToUse = customFilters || get().filters
-      const { data, error } = await productService.getProducts(filtersToUse)
+      // Obtener todos los productos sin filtros de búsqueda
+      const { data, error } = await productService.getProducts({})
       
       if (error) throw error
       
-      // Calcular inventario disponible y próximo vencimiento
+      // Procesar productos
       const processedProducts = data.map(product => {
         const entradas = product.movimientos
           ?.filter(m => m.tipo === 'entrada')
@@ -42,11 +43,59 @@ export const useProductsStore = create((set, get) => ({
       })
       
       set({ products: processedProducts, loading: false })
+      
+      // Aplicar filtros si existen
+      const filtersToUse = customFilters || get().filters
+      get().applyFilters(filtersToUse)
     } catch (error) {
       console.error('Error fetching products:', error)
       toast.error('Error al cargar productos')
       set({ loading: false })
     }
+  },
+
+  // Aplicar filtros en el cliente
+  applyFilters: (filters) => {
+    const { products } = get()
+    
+    let filtered = [...products]
+    
+    // Filtro de búsqueda
+    if (filters.search && filters.search.trim() !== '') {
+      const searchLower = filters.search.toLowerCase().trim()
+      filtered = filtered.filter(product => 
+        product.nombre.toLowerCase().includes(searchLower) ||
+        product.laboratorio.toLowerCase().includes(searchLower) ||
+        product.lote.toLowerCase().includes(searchLower) ||
+        product.ubicacion.toLowerCase().includes(searchLower) ||
+        product.proveedor.toLowerCase().includes(searchLower) ||
+        product.presentacion.toLowerCase().includes(searchLower)
+      )
+    }
+    
+    // Filtro próximos a vencer
+    if (filters.proximosVencer) {
+      filtered = filtered.filter(product => {
+        const days = product.diasParaVencer
+        return days > 0 && days <= 30
+      })
+    }
+    
+    // Filtro bajo stock
+    if (filters.bajoStock) {
+      filtered = filtered.filter(product => 
+        product.cantidad <= product.stock_minimo
+      )
+    }
+    
+    // Filtro refrigeración
+    if (filters.refrigeracion !== undefined) {
+      filtered = filtered.filter(product => 
+        product.necesita_refrigeracion === filters.refrigeracion
+      )
+    }
+    
+    set({ filteredProducts: filtered, filters })
   },
 
   // Crear producto
@@ -99,18 +148,18 @@ export const useProductsStore = create((set, get) => ({
 
   // Actualizar filtros
   setFilters: (newFilters) => {
-    set({ filters: { ...get().filters, ...newFilters } })
+    const updatedFilters = { ...get().filters, ...newFilters }
+    get().applyFilters(updatedFilters)
   },
 
   // Limpiar filtros
   clearFilters: () => {
-    set({ 
-      filters: {
-        search: '',
-        proximosVencer: false,
-        bajoStock: false,
-        refrigeracion: undefined
-      }
-    })
+    const defaultFilters = {
+      search: '',
+      proximosVencer: false,
+      bajoStock: false,
+      refrigeracion: undefined
+    }
+    get().applyFilters(defaultFilters)
   }
 }))

@@ -27,28 +27,67 @@ const schema = yup.object({
 const ProductForm = ({ product, onSave, onCancel }) => {
   const { user } = useAuth()
   
+  // Función para formatear fecha para input type="date"
+  const formatDateForInput = (dateString) => {
+    if (!dateString) return ''
+    const date = new Date(dateString)
+    return date.toISOString().split('T')[0]
+  }
+
+  // Preparar valores por defecto
+  const defaultValues = product ? {
+    ...product,
+    fecha_entrada: formatDateForInput(product.fecha_entrada),
+    fecha_fabricacion: formatDateForInput(product.fecha_fabricacion),
+    fecha_vencimiento: formatDateForInput(product.fecha_vencimiento),
+    cantidad: Number(product.cantidad) || 0,
+    stock_minimo: Number(product.stock_minimo) || 10,
+    necesita_refrigeracion: Boolean(product.necesita_refrigeracion)
+  } : {
+    cantidad: 0,
+    necesita_refrigeracion: false,
+    stock_minimo: 10,
+    fecha_entrada: new Date().toISOString().split('T')[0]
+  }
+  
   const {
     register,
     handleSubmit,
     formState: { errors, isSubmitting }
   } = useForm({
     resolver: yupResolver(schema),
-    defaultValues: product || {
-      cantidad: 0,
-      necesita_refrigeracion: false,
-      stock_minimo: 10,
-      fecha_entrada: new Date().toISOString().split('T')[0]
-    }
+    defaultValues
   })
 
   const onSubmit = async (data) => {
-    const productData = {
-      ...data,
-      user_id: user.id,
-      necesita_refrigeracion: data.necesita_refrigeracion || false
+    try {
+      // Limpiar y preparar datos
+      const productData = {
+        nombre: data.nombre.trim(),
+        laboratorio: data.laboratorio.trim(),
+        proveedor: data.proveedor.trim(),
+        cantidad: Number(data.cantidad),
+        presentacion: data.presentacion.trim(),
+        lote: data.lote.trim(),
+        fecha_entrada: data.fecha_entrada,
+        registro_invima: data.registro_invima?.trim() || null,
+        fecha_fabricacion: data.fecha_fabricacion,
+        fecha_vencimiento: data.fecha_vencimiento,
+        ubicacion: data.ubicacion.trim(),
+        stock_minimo: Number(data.stock_minimo),
+        necesita_refrigeracion: Boolean(data.necesita_refrigeracion)
+      }
+
+      // Solo agregar user_id si es un producto nuevo
+      if (!product) {
+        productData.user_id = user.id
+      }
+
+      console.log('Datos a guardar:', productData)
+      await onSave(productData)
+    } catch (error) {
+      console.error('Error en onSubmit:', error)
     }
-    
-    await onSave(productData)
   }
 
   return (
@@ -59,6 +98,7 @@ const ProductForm = ({ product, onSave, onCancel }) => {
           {...register('nombre')}
           error={errors.nombre?.message}
           required
+          placeholder="Ej: Acetaminofén"
         />
 
         <Input
@@ -66,6 +106,7 @@ const ProductForm = ({ product, onSave, onCancel }) => {
           {...register('laboratorio')}
           error={errors.laboratorio?.message}
           required
+          placeholder="Ej: Bayer"
         />
 
         <Input
@@ -73,19 +114,22 @@ const ProductForm = ({ product, onSave, onCancel }) => {
           {...register('proveedor')}
           error={errors.proveedor?.message}
           required
+          placeholder="Ej: Droguería Central"
         />
 
         <Input
           label="Cantidad inicial"
           type="number"
+          min="0"
           {...register('cantidad', { valueAsNumber: true })}
           error={errors.cantidad?.message}
           required
+          placeholder="0"
         />
 
         <Input
           label="Presentación"
-          placeholder="ej. Caja x 20 tabletas"
+          placeholder="ej. Caja x 20 tabletas de 500mg"
           {...register('presentacion')}
           error={errors.presentacion?.message}
           required
@@ -96,6 +140,7 @@ const ProductForm = ({ product, onSave, onCancel }) => {
           {...register('lote')}
           error={errors.lote?.message}
           required
+          placeholder="Ej: LOT-2024-001"
         />
 
         <Input
@@ -110,6 +155,7 @@ const ProductForm = ({ product, onSave, onCancel }) => {
           label="Registro INVIMA"
           {...register('registro_invima')}
           error={errors.registro_invima?.message}
+          placeholder="Opcional"
         />
 
         <Input
@@ -139,9 +185,11 @@ const ProductForm = ({ product, onSave, onCancel }) => {
         <Input
           label="Stock mínimo"
           type="number"
+          min="1"
           {...register('stock_minimo', { valueAsNumber: true })}
           error={errors.stock_minimo?.message}
           required
+          placeholder="10"
         />
       </div>
 
@@ -158,18 +206,32 @@ const ProductForm = ({ product, onSave, onCancel }) => {
         </label>
       </div>
 
+      {/* Información del producto editado */}
+      {product && (
+        <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+          <p className="text-sm text-blue-800">
+            <strong>Editando:</strong> {product.nombre} - Lote: {product.lote}
+          </p>
+          <p className="text-xs text-blue-600 mt-1">
+            Creado: {new Date(product.created_at).toLocaleDateString('es-CO')}
+          </p>
+        </div>
+      )}
+
       {/* Botones */}
       <div className="flex justify-end space-x-3 pt-6 border-t">
         <Button
           type="button"
           variant="outline"
           onClick={onCancel}
+          disabled={isSubmitting}
         >
           Cancelar
         </Button>
         <Button
           type="submit"
           loading={isSubmitting}
+          disabled={isSubmitting}
         >
           {product ? 'Actualizar' : 'Crear'} Producto
         </Button>

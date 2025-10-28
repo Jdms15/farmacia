@@ -15,30 +15,30 @@ export const productService = {
     if (filters.search) {
       query = query.or(`nombre.ilike.%${filters.search}%,laboratorio.ilike.%${filters.search}%,lote.ilike.%${filters.search}%`)
     }
-    
+
     if (filters.proximosVencer) {
       const fechaLimite = new Date()
       fechaLimite.setDate(fechaLimite.getDate() + 30)
       query = query.lte('fecha_vencimiento', fechaLimite.toISOString().split('T')[0])
     }
-    
+
     if (filters.bajoStock) {
       // Usar una consulta más simple para bajo stock
       query = query.lt('cantidad', 10) // Usar un valor fijo o filtrar después
     }
-    
+
     if (filters.refrigeracion !== undefined) {
       query = query.eq('necesita_refrigeracion', filters.refrigeracion)
     }
 
     const { data, error } = await query
-    
+
     // Filtrar bajo stock en el cliente si es necesario
     if (filters.bajoStock && data) {
       const filteredData = data.filter(product => product.cantidad <= product.stock_minimo)
       return { data: filteredData, error }
     }
-    
+
     return { data, error }
   },
 
@@ -51,7 +51,7 @@ export const productService = {
       `)
       .eq('id', id)
       .single()
-    
+
     return { data, error }
   },
 
@@ -61,19 +61,47 @@ export const productService = {
       .insert([product])
       .select()
       .single()
-    
+
     return { data, error }
   },
 
   async updateProduct(id, updates) {
-    const { data, error } = await supabase
-      .from('productos')
-      .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select()
-      .single()
-    
-    return { data, error }
+    try {
+      // Asegurarse de que los datos numéricos sean números
+      const cleanedUpdates = {
+        ...updates,
+        cantidad: Number(updates.cantidad),
+        stock_minimo: Number(updates.stock_minimo),
+        updated_at: new Date().toISOString()
+      }
+
+      // Remover campos que no deben actualizarse
+      delete cleanedUpdates.user_id
+      delete cleanedUpdates.created_at
+      delete cleanedUpdates.movimientos
+      delete cleanedUpdates.inventarioDisponible
+      delete cleanedUpdates.diasParaVencer
+
+      console.log('Actualizando producto:', id, cleanedUpdates)
+
+      const { data, error } = await supabase
+        .from('productos')
+        .update(cleanedUpdates)
+        .eq('id', id)
+        .select()
+        .single()
+
+      if (error) {
+        console.error('Error en actualización:', error)
+        throw error
+      }
+
+      console.log('Producto actualizado exitosamente:', data)
+      return { data, error: null }
+    } catch (error) {
+      console.error('Error updating product:', error)
+      return { data: null, error }
+    }
   },
 
   async deleteProduct(id) {
@@ -81,21 +109,21 @@ export const productService = {
       .from('productos')
       .delete()
       .eq('id', id)
-    
+
     return { error }
   },
 
   async getProductsNearExpiry(days = 30) {
     const fechaLimite = new Date()
     fechaLimite.setDate(fechaLimite.getDate() + days)
-    
+
     const { data, error } = await supabase
       .from('productos')
       .select('*')
       .lte('fecha_vencimiento', fechaLimite.toISOString().split('T')[0])
       .gt('fecha_vencimiento', new Date().toISOString().split('T')[0]) // No incluir vencidos
       .order('fecha_vencimiento', { ascending: true })
-    
+
     return { data, error }
   },
 
@@ -104,12 +132,12 @@ export const productService = {
     const { data, error } = await supabase
       .from('productos')
       .select('*')
-    
+
     if (error) return { data: null, error }
-    
+
     // Filtrar productos con bajo stock
     const lowStockProducts = data.filter(product => product.cantidad <= product.stock_minimo)
-    
+
     return { data: lowStockProducts, error: null }
   },
 
@@ -119,7 +147,7 @@ export const productService = {
       .from('vista_productos_stock')
       .select('*')
       .eq('bajo_stock', true)
-    
+
     return { data, error }
   },
 
@@ -130,7 +158,7 @@ export const productService = {
       const { data: productos, error: productosError } = await supabase
         .from('productos')
         .select('*')
-      
+
       if (productosError) throw productosError
 
       const today = new Date()

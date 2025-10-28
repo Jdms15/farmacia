@@ -7,7 +7,7 @@ import Card from '../ui/Card'
 
 const ProductFilters = ({ filters, onFiltersChange }) => {
   const handleFilterChange = (key, value) => {
-    onFiltersChange({ [key]: value })
+    onFiltersChange({ ...filters, [key]: value })
   }
 
   const clearFilters = () => {
@@ -23,29 +23,34 @@ const ProductFilters = ({ filters, onFiltersChange }) => {
 
   return (
     <Card className="mb-6">
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="space-y-4">
         {/* Búsqueda */}
-        <div className="flex-1 min-w-64">
+        <div className="flex-1">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
-            <Input
-              placeholder="Buscar por nombre, laboratorio, lote o ubicación..."
+            <input
+              type="text"
+              placeholder="Buscar por nombre, laboratorio, lote, ubicación o proveedor..."
               value={filters.search}
               onChange={(e) => handleFilterChange('search', e.target.value)}
-              className="pl-10"
+              className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
         </div>
 
         {/* Filtros rápidos */}
-        <div className="flex items-center space-x-2">
-          <Filter size={20} className="text-gray-500" />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex items-center space-x-2">
+            <Filter size={20} className="text-gray-500" />
+            <span className="text-sm font-medium text-gray-700">Filtros rápidos:</span>
+          </div>
           
           <Button
             variant={filters.proximosVencer ? 'primary' : 'outline'}
             size="sm"
             onClick={() => handleFilterChange('proximosVencer', !filters.proximosVencer)}
           >
+            {filters.proximosVencer && '✓ '}
             Próximos a vencer
           </Button>
 
@@ -54,6 +59,7 @@ const ProductFilters = ({ filters, onFiltersChange }) => {
             size="sm"
             onClick={() => handleFilterChange('bajoStock', !filters.bajoStock)}
           >
+            {filters.bajoStock && '✓ '}
             Bajo stock
           </Button>
 
@@ -64,6 +70,7 @@ const ProductFilters = ({ filters, onFiltersChange }) => {
               filters.refrigeracion === true ? undefined : true
             )}
           >
+            {filters.refrigeracion === true && '✓ '}
             Refrigeración
           </Button>
 
@@ -72,10 +79,10 @@ const ProductFilters = ({ filters, onFiltersChange }) => {
               variant="outline"
               size="sm"
               onClick={clearFilters}
-              className="flex items-center space-x-1"
+              className="flex items-center space-x-1 ml-auto"
             >
               <X size={16} />
-              <span>Limpiar</span>
+              <span>Limpiar filtros</span>
             </Button>
           )}
         </div>

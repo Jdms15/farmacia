@@ -1,9 +1,11 @@
+// src/hooks/useProducts.js
 import { useEffect } from 'react'
 import { useProductsStore } from '../store/productsStore'
 
 export const useProducts = () => {
   const {
     products,
+    filteredProducts,
     loading,
     filters,
     fetchProducts,
@@ -20,6 +22,7 @@ export const useProducts = () => {
 
   return {
     products,
+    filteredProducts,
     loading,
     filters,
     fetchProducts,
