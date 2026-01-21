@@ -1,4 +1,4 @@
-// src/services/reportService.js - Versión Solo CSV
+// src/services/reportService.js - Versión con filtro de producto
 import { supabase } from './supabase'
 import { productService } from './productService'
 import { movementService } from './movementService'
@@ -37,12 +37,17 @@ export const reportService = {
     }
   },
 
-  // Generar reporte de movimientos
-  async generateMovementsReport(startDate, endDate, format = 'csv') {
+  // Generar reporte de movimientos con filtro de producto
+  async generateMovementsReport(startDate, endDate, productoId = '', format = 'csv') {
     try {
       const filters = {
         fechaInicio: startDate,
         fechaFin: endDate
+      }
+      
+      // Agregar filtro de producto si existe
+      if (productoId) {
+        filters.productoId = productoId
       }
       
       const { data: movements, error } = await movementService.getMovements(filters)
@@ -66,11 +71,23 @@ export const reportService = {
         unidadesEntrada: movements.filter(m => m.tipo === 'entrada').reduce((sum, m) => sum + m.cantidad, 0),
         unidadesSalida: movements.filter(m => m.tipo === 'salida').reduce((sum, m) => sum + m.cantidad, 0)
       }
+      
+      // Obtener nombre del producto si hay filtro
+      let productName = ''
+      if (productoId) {
+        const { data: product } = await supabase
+          .from('productos')
+          .select('nombre')
+          .eq('id', productoId)
+          .single()
+        
+        productName = product?.nombre || ''
+      }
 
       if (format === 'excel' || format === 'csv') {
-        return this.exportMovementsToCSV(reportData, summary, startDate, endDate)
+        return this.exportMovementsToCSV(reportData, summary, startDate, endDate, productName)
       } else if (format === 'pdf') {
-        return this.exportMovementsToPDF(reportData, summary, startDate, endDate)
+        return this.exportMovementsToPDF(reportData, summary, startDate, endDate, productName)
       }
 
       return { success: true, data: reportData, summary }
@@ -128,13 +145,21 @@ export const reportService = {
     }
   },
 
-  // Exportar movimientos a CSV con resumen
-  exportMovementsToCSV(data, summary, startDate, endDate) {
+  // Exportar movimientos a CSV con resumen y filtro de producto
+  exportMovementsToCSV(data, summary, startDate, endDate, productName = '') {
     try {
       // Crear contenido CSV con resumen al inicio
       let csvContent = 'REPORTE DE MOVIMIENTOS\n\n'
       csvContent += `Período,${startDate} a ${endDate}\n`
-      csvContent += 'RESUMEN\n'
+      
+      // Agregar filtro de producto si existe
+      if (productName) {
+        csvContent += `Producto,${productName}\n`
+      } else {
+        csvContent += `Producto,Todos los productos\n`
+      }
+      
+      csvContent += '\nRESUMEN\n'
       csvContent += `Total de movimientos,${summary.totalMovimientos}\n`
       csvContent += `Total entradas,${summary.totalEntradas}\n`
       csvContent += `Total salidas,${summary.totalSalidas}\n`
@@ -146,7 +171,14 @@ export const reportService = {
       const blob = new Blob(['\uFEFF' + csvContent], { 
         type: 'text/csv;charset=utf-8;' 
       })
-      this.downloadFile(blob, `Movimientos_${startDate}_${endDate}.csv`)
+      
+      let filename = 'Movimientos'
+      if (productName) {
+        filename += `_${productName.replace(/[^a-zA-Z0-9]/g, '_')}`
+      }
+      filename += `_${startDate}_${endDate}.csv`
+      
+      this.downloadFile(blob, filename)
       
       return { success: true }
     } catch (error) {
@@ -329,8 +361,8 @@ export const reportService = {
     }
   },
 
-  // Exportar movimientos a PDF
-  exportMovementsToPDF(data, summary, startDate, endDate) {
+  // Exportar movimientos a PDF con filtro de producto
+  exportMovementsToPDF(data, summary, startDate, endDate, productName = '') {
     try {
       let htmlContent = `
         <!DOCTYPE html>
@@ -350,6 +382,7 @@ export const reportService = {
         <body>
           <h1>Reporte de Movimientos</h1>
           <p style="text-align: center;">Período: ${startDate} a ${endDate}</p>
+          ${productName ? `<p style="text-align: center;"><strong>Producto: ${productName}</strong></p>` : '<p style="text-align: center;"><strong>Todos los productos</strong></p>'}
           
           <div class="summary">
             <h3>Resumen</h3>

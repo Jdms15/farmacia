@@ -5,7 +5,7 @@ export const productValidationSchema = yup.object({
   nombre: yup.string().required('Nombre es requerido'),
   laboratorio: yup.string().required('Laboratorio es requerido'),
   proveedor: yup.string().required('Proveedor es requerido'),
-  cantidad: yup.number().min(0, 'La cantidad debe ser mayor o igual a 0').required('Cantidad es requerida'),
+  cantidad: yup.number().min(0, 'La cantidad no puede ser negativa').required('Cantidad es requerida'),
   presentacion: yup.string().required('Presentación es requerida'),
   lote: yup.string().required('Lote es requerido'),
   fecha_entrada: yup.date().required('Fecha de entrada es requerida'),
@@ -14,7 +14,7 @@ export const productValidationSchema = yup.object({
     .min(yup.ref('fecha_fabricacion'), 'La fecha de vencimiento debe ser posterior a la fabricación')
     .required('Fecha de vencimiento es requerida'),
   ubicacion: yup.string().required('Ubicación es requerida'),
-  stock_minimo: yup.number().min(1, 'Stock mínimo debe ser mayor a 0').required('Stock mínimo es requerido')
+  stock_minimo: yup.number().min(0, 'Stock mínimo no puede ser negativo').required('Stock mínimo es requerido')
 })
 
 export const movementValidationSchema = yup.object({

@@ -1,4 +1,4 @@
-// src/store/productsStore.js
+// src/store/productsStore.js - Versión simplificada
 import { create } from 'zustand'
 import { productService } from '../services/productService'
 import toast from 'react-hot-toast'
@@ -18,29 +18,21 @@ export const useProductsStore = create((set, get) => ({
   fetchProducts: async (customFilters = null) => {
     set({ loading: true })
     try {
-      // Obtener todos los productos sin filtros de búsqueda
+      // Obtener todos los productos - la cantidad ya viene correcta de la BD
       const { data, error } = await productService.getProducts({})
       
       if (error) throw error
       
-      // Procesar productos
-      const processedProducts = data.map(product => {
-        const entradas = product.movimientos
-          ?.filter(m => m.tipo === 'entrada')
-          ?.reduce((sum, m) => sum + m.cantidad, 0) || 0
-        
-        const salidas = product.movimientos
-          ?.filter(m => m.tipo === 'salida')
-          ?.reduce((sum, m) => sum + m.cantidad, 0) || 0
-        
-        return {
-          ...product,
-          inventarioDisponible: entradas - salidas,
-          diasParaVencer: Math.ceil(
-            (new Date(product.fecha_vencimiento) - new Date()) / (1000 * 60 * 60 * 24)
-          )
-        }
-      })
+      console.log('📦 Productos cargados:', data?.length || 0)
+      
+      // NO calcular inventarioDisponible desde movimientos
+      // La columna productos.cantidad es la fuente de verdad (actualizada por el trigger)
+      const processedProducts = data.map(product => ({
+        ...product,
+        diasParaVencer: Math.ceil(
+          (new Date(product.fecha_vencimiento) - new Date()) / (1000 * 60 * 60 * 24)
+        )
+      }))
       
       set({ products: processedProducts, loading: false })
       

@@ -1,4 +1,4 @@
-// src/services/movementService.js
+// src/services/movementService.js - Versión simplificada con trigger
 import { supabase } from './supabase'
 
 export const movementService = {
@@ -33,15 +33,33 @@ export const movementService = {
 
   async createMovement(movement) {
     try {
+      console.log('📦 Creando movimiento:', movement)
+
       // Validar stock disponible ANTES de crear el movimiento (solo para salidas)
+      // El trigger de la BD actualizará el stock automáticamente
       if (movement.tipo === 'salida') {
-        const stockValidation = await this.validateStock(movement.producto_id, movement.cantidad)
-        if (!stockValidation.valid) {
-          throw new Error(stockValidation.message)
+        const { data: producto, error: productoError } = await supabase
+          .from('productos')
+          .select('cantidad, nombre')
+          .eq('id', movement.producto_id)
+          .single()
+        
+        if (productoError || !producto) {
+          throw new Error('Producto no encontrado')
+        }
+        
+        console.log(`📊 Stock actual de "${producto.nombre}": ${producto.cantidad}`)
+        console.log(`📤 Intentando retirar: ${movement.cantidad}`)
+        
+        if (producto.cantidad < movement.cantidad) {
+          throw new Error(
+            `Stock insuficiente de "${producto.nombre}". ` +
+            `Disponible: ${producto.cantidad}, intentando retirar: ${movement.cantidad}`
+          )
         }
       }
 
-      // Solo crear el movimiento - NO actualizar el stock directamente
+      // Crear el movimiento - El trigger actualizará el stock automáticamente
       const { data: movementData, error: movementError } = await supabase
         .from('movimientos')
         .insert([{
@@ -52,85 +70,24 @@ export const movementService = {
         .single()
       
       if (movementError) {
+        console.error('❌ Error en insert:', movementError)
         throw movementError
       }
       
+      console.log('✅ Movimiento creado exitosamente. ID:', movementData.id)
+      console.log('🔄 El trigger actualizará el stock automáticamente.')
+      
       return { data: movementData, error: null }
     } catch (error) {
-      console.error('Error creating movement:', error)
-      return { data: null, error }
-    }
-  },
-
-  // Nueva función para validar stock disponible
-  async validateStock(productoId, cantidadSalida) {
-    try {
-      const stockActual = await this.getProductCurrentStock(productoId)
-      
-      if (stockActual < cantidadSalida) {
-        return {
-          valid: false,
-          message: `Stock insuficiente. Stock disponible: ${stockActual}, intentando retirar: ${cantidadSalida}`
+      console.error('❌ Error creating movement:', error)
+      return { 
+        data: null, 
+        error: {
+          message: error.message || 'Error al crear movimiento'
         }
       }
-      
-      return { valid: true }
-    } catch (error) {
-      return {
-        valid: false,
-        message: 'Error al validar stock: ' + error.message
-      }
     }
   },
-
-  // Función para obtener el stock actual calculado desde movimientos
-  async getProductCurrentStock(productoId) {
-    try {
-      // Obtener cantidad inicial del producto
-      const { data: producto, error: productoError } = await supabase
-        .from('productos')
-        .select('cantidad')
-        .eq('id', productoId)
-        .single()
-      
-      if (productoError || !producto) {
-        throw new Error('Producto no encontrado')
-      }
-
-      // Obtener todos los movimientos del producto
-      const { data: movimientos, error: movimientosError } = await supabase
-        .from('movimientos')
-        .select('tipo, cantidad')
-        .eq('producto_id', productoId)
-      
-      if (movimientosError) {
-        throw new Error('Error al obtener movimientos')
-      }
-
-      // Calcular stock actual
-      let stockCalculado = producto.cantidad // Cantidad inicial
-
-      if (movimientos && movimientos.length > 0) {
-        const totalEntradas = movimientos
-          .filter(m => m.tipo === 'entrada')
-          .reduce((sum, m) => sum + m.cantidad, 0)
-        
-        const totalSalidas = movimientos
-          .filter(m => m.tipo === 'salida')
-          .reduce((sum, m) => sum + m.cantidad, 0)
-        
-        stockCalculado = producto.cantidad + totalEntradas - totalSalidas
-      }
-
-      return Math.max(0, stockCalculado) // No permitir stock negativo
-    } catch (error) {
-      console.error('Error calculating current stock:', error)
-      throw error
-    }
-  },
-
-  // ELIMINAR la función updateProductQuantity ya que no la necesitamos
-  // El stock se calcula dinámicamente desde los movimientos
 
   async getRecentMovements(limit = 10) {
     const { data, error } = await supabase

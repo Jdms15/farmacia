@@ -11,7 +11,7 @@ const schema = yup.object({
   nombre: yup.string().required('Nombre es requerido'),
   laboratorio: yup.string().required('Laboratorio es requerido'),
   proveedor: yup.string().required('Proveedor es requerido'),
-  cantidad: yup.number().min(0, 'La cantidad debe ser mayor a 0').required('Cantidad es requerida'),
+  cantidad: yup.number().min(0, 'La cantidad no puede ser negativa').required('Cantidad es requerida'),
   presentacion: yup.string().required('Presentación es requerida'),
   lote: yup.string().required('Lote es requerido'),
   fecha_entrada: yup.date().required('Fecha de entrada es requerida'),
@@ -21,7 +21,7 @@ const schema = yup.object({
     .min(yup.ref('fecha_fabricacion'), 'La fecha de vencimiento debe ser posterior a la fabricación')
     .required('Fecha de vencimiento es requerida'),
   ubicacion: yup.string().required('Ubicación es requerida'),
-  stock_minimo: yup.number().min(1, 'Stock mínimo debe ser mayor a 0').required('Stock mínimo es requerido')
+  stock_minimo: yup.number().min(0, 'Stock mínimo no puede ser negativo').required('Stock mínimo es requerido')
 })
 
 const ProductForm = ({ product, onSave, onCancel }) => {
@@ -41,12 +41,12 @@ const ProductForm = ({ product, onSave, onCancel }) => {
     fecha_fabricacion: formatDateForInput(product.fecha_fabricacion),
     fecha_vencimiento: formatDateForInput(product.fecha_vencimiento),
     cantidad: Number(product.cantidad) || 0,
-    stock_minimo: Number(product.stock_minimo) || 10,
+    stock_minimo: Number(product.stock_minimo) || 5,
     necesita_refrigeracion: Boolean(product.necesita_refrigeracion)
   } : {
     cantidad: 0,
     necesita_refrigeracion: false,
-    stock_minimo: 10,
+    stock_minimo: 5,
     fecha_entrada: new Date().toISOString().split('T')[0]
   }
   
@@ -125,6 +125,7 @@ const ProductForm = ({ product, onSave, onCancel }) => {
           error={errors.cantidad?.message}
           required
           placeholder="0"
+          helperText="Puede ser 0 si no hay stock disponible"
         />
 
         <Input
@@ -185,11 +186,12 @@ const ProductForm = ({ product, onSave, onCancel }) => {
         <Input
           label="Stock mínimo"
           type="number"
-          min="1"
+          min="0"
           {...register('stock_minimo', { valueAsNumber: true })}
           error={errors.stock_minimo?.message}
           required
-          placeholder="10"
+          placeholder="5"
+          helperText="Alerta cuando el stock sea menor o igual a este valor"
         />
       </div>
 

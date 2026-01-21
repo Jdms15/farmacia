@@ -14,7 +14,8 @@ const Reports = () => {
   const { alerts } = useAlerts()
   const [dateRange, setDateRange] = useState({
     startDate: '',
-    endDate: ''
+    endDate: '',
+    productoId: ''
   })
   const [generating, setGenerating] = useState(false)
 
@@ -51,12 +52,16 @@ const Reports = () => {
     try {
       const result = await reportService.generateMovementsReport(
         dateRange.startDate, 
-        dateRange.endDate, 
+        dateRange.endDate,
+        dateRange.productoId,
         format
       )
       
       if (result.success) {
-        toast.success(`Reporte de movimientos generado exitosamente (${format.toUpperCase()})`)
+        const productName = dateRange.productoId 
+          ? products.find(p => p.id === dateRange.productoId)?.nombre || ''
+          : 'Todos los productos'
+        toast.success(`Reporte de movimientos generado exitosamente (${productName})`)
       } else {
         throw new Error(result.error || 'Error al generar reporte')
       }
@@ -93,6 +98,7 @@ const Reports = () => {
     lastMonth.setMonth(today.getMonth() - 1)
     
     setDateRange({
+      ...dateRange,
       startDate: lastMonth.toISOString().split('T')[0],
       endDate: today.toISOString().split('T')[0]
     })
@@ -104,6 +110,7 @@ const Reports = () => {
     lastWeek.setDate(today.getDate() - 7)
     
     setDateRange({
+      ...dateRange,
       startDate: lastWeek.toISOString().split('T')[0],
       endDate: today.toISOString().split('T')[0]
     })
@@ -114,6 +121,7 @@ const Reports = () => {
     const firstDay = new Date(today.getFullYear(), today.getMonth(), 1)
     
     setDateRange({
+      ...dateRange,
       startDate: firstDay.toISOString().split('T')[0],
       endDate: today.toISOString().split('T')[0]
     })
@@ -196,6 +204,32 @@ const Reports = () => {
                     Historial por rango de fechas
                   </p>
                 </div>
+              </div>
+              
+              {/* Selector de producto */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Producto (opcional)
+                </label>
+                <select
+                  value={dateRange.productoId}
+                  onChange={(e) => setDateRange(prev => ({
+                    ...prev,
+                    productoId: e.target.value
+                  }))}
+                  disabled={generating}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm"
+                >
+                  <option value="">Todos los productos</option>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.nombre} - {product.laboratorio}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Deja en blanco para exportar todos los productos
+                </p>
               </div>
               
               {/* Botones de rango rápido */}
@@ -357,6 +391,7 @@ const Reports = () => {
                 <li><strong>Excel:</strong> Archivo .xlsx con múltiples hojas y formato</li>
                 <li><strong>CSV:</strong> Archivo de texto separado por comas</li>
                 <li><strong>PDF:</strong> Documento imprimible con formato profesional</li>
+                <li><strong>Filtrado:</strong> Exporta movimientos de un producto específico o de todos</li>
               </ul>
             </div>
           </div>

@@ -1,5 +1,5 @@
-// src/pages/Movements.jsx
-import React, { useState, useEffect } from 'react'
+// src/pages/Movements.jsx - CON PROTECCIÓN ANTI-DOBLE-SUBMIT
+import React, { useState, useEffect, useRef } from 'react'
 import { Plus, Download } from 'lucide-react'
 import { movementService } from '../services/movementService'
 import { useProducts } from '../hooks/useProducts'
@@ -23,6 +23,10 @@ const Movements = () => {
     fechaFin: ''
   })
 
+  // ✅ Ref para prevenir doble submit
+  const lastSubmitTime = useRef(0)
+  const lastSubmitData = useRef(null)
+
   useEffect(() => {
     fetchMovements()
   }, [filters])
@@ -42,15 +46,37 @@ const Movements = () => {
   }
 
   const handleCreateMovement = async (movementData) => {
-    // Prevenir múltiples envíos
+    // ✅ PROTECCIÓN 1: Prevenir si ya está procesando
     if (isCreating) {
+      console.warn('⚠️ Ya se está procesando un movimiento, ignorando...')
       return { success: false, error: 'Ya se está procesando un movimiento' }
     }
 
+    // ✅ PROTECCIÓN 2: Prevenir doble submit en menos de 2 segundos
+    const now = Date.now()
+    const timeSinceLastSubmit = now - lastSubmitTime.current
+    
+    // Comparar datos para detectar duplicados exactos
+    const dataString = JSON.stringify(movementData)
+    const isDuplicate = 
+      dataString === lastSubmitData.current && 
+      timeSinceLastSubmit < 2000 // 2 segundos
+
+    if (isDuplicate) {
+      console.warn('⚠️ Movimiento duplicado detectado, ignorando...')
+      toast.error('Por favor espera antes de crear otro movimiento')
+      return { success: false, error: 'Movimiento duplicado' }
+    }
+
+    // Actualizar referencias
+    lastSubmitTime.current = now
+    lastSubmitData.current = dataString
+
+    // Marcar como procesando
     setIsCreating(true)
     
     try {
-      console.log('Creando movimiento:', movementData)
+      console.log('📦 Creando movimiento (protegido):', movementData)
       
       const result = await movementService.createMovement(movementData)
       
@@ -58,12 +84,13 @@ const Movements = () => {
         throw result.error
       }
 
+      console.log('✅ Movimiento creado exitosamente')
       toast.success('Movimiento registrado exitosamente')
       
-      // Cerrar modal y actualizar datos
+      // Cerrar modal
       setIsModalOpen(false)
       
-      // Refrescar tanto movimientos como productos
+      // Refrescar datos
       await Promise.all([
         fetchMovements(),
         fetchProducts()
@@ -71,27 +98,38 @@ const Movements = () => {
       
       return { success: true, data: result.data }
     } catch (error) {
-      console.error('Error creating movement:', error)
+      console.error('❌ Error creating movement:', error)
       
-      // Mostrar mensaje de error específico
       const errorMessage = error.message || 'Error al registrar movimiento'
       toast.error(errorMessage)
       
       return { success: false, error }
     } finally {
-      setIsCreating(false)
+      // ✅ Pequeño delay antes de permitir otro submit
+      setTimeout(() => {
+        setIsCreating(false)
+      }, 500)
     }
   }
 
   const handleExport = () => {
-    // Implementar exportación
     toast.info('Función de exportación en desarrollo')
   }
 
   const handleCloseModal = () => {
     if (!isCreating) {
       setIsModalOpen(false)
+      // Limpiar referencias al cerrar
+      lastSubmitTime.current = 0
+      lastSubmitData.current = null
     }
+  }
+
+  const handleOpenModal = () => {
+    // Limpiar referencias al abrir
+    lastSubmitTime.current = 0
+    lastSubmitData.current = null
+    setIsModalOpen(true)
   }
 
   return (
@@ -112,7 +150,7 @@ const Movements = () => {
             <span>Exportar</span>
           </Button>
           <Button 
-            onClick={() => setIsModalOpen(true)} 
+            onClick={handleOpenModal} 
             className="flex items-center space-x-2"
             disabled={isCreating}
           >
@@ -143,6 +181,21 @@ const Movements = () => {
           onCancel={handleCloseModal}
         />
       </Modal>
+
+      {/* Overlay para prevenir clicks durante procesamiento */}
+      {isCreating && (
+        <div className="fixed inset-0 bg-black bg-opacity-30 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-xl">
+            <div className="flex items-center space-x-3">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <div>
+                <p className="font-semibold text-gray-900">Procesando movimiento...</p>
+                <p className="text-sm text-gray-600">Por favor espera</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

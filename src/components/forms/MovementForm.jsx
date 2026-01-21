@@ -1,4 +1,6 @@
-// src/components/forms/MovementForm.jsx
+// src/components/forms/MovementForm.jsx - Versión simplificada
+// CAMBIO PRINCIPAL: Mostrar stock directamente de producto.cantidad (no calcular desde movimientos)
+
 import React, { useState, useMemo, useRef, useEffect } from 'react'
 import { useForm } from 'react-hook-form'
 import { yupResolver } from '@hookform/resolvers/yup'
@@ -107,7 +109,6 @@ const MovementForm = ({ products, onSave, onCancel }) => {
     setValue('producto_id', '', { shouldValidate: false })
     setSearchTerm('')
     setShowDropdown(false)
-    // Enfocar el input de búsqueda
     setTimeout(() => {
       searchInputRef.current?.focus()
     }, 100)
@@ -133,6 +134,8 @@ const MovementForm = ({ products, onSave, onCancel }) => {
         ...data,
         usuario: profile?.nombre || 'Usuario'
       }
+      
+      console.log('📋 Datos del formulario:', movementData)
       
       const result = await onSave(movementData)
       
@@ -257,7 +260,7 @@ const MovementForm = ({ products, onSave, onCancel }) => {
                                 </div>
                               </div>
 
-                              {/* Stock */}
+                              {/* Stock - USAR producto.cantidad directamente (fuente de verdad) */}
                               <div className="ml-4 text-right flex-shrink-0">
                                 <div className={`text-2xl font-bold ${
                                   isLowStock ? 'text-red-600' : 'text-green-600'
@@ -358,6 +361,9 @@ const MovementForm = ({ products, onSave, onCancel }) => {
                   : 'text-green-600'
               }`}>
                 {selectedProduct.cantidad} unidades
+              </p>
+              <p className="text-xs text-gray-500 mt-1">
+                Fuente de verdad: BD
               </p>
             </div>
             <div className="bg-white p-3 rounded-lg border border-blue-100 shadow-sm">
