@@ -1,17 +1,14 @@
-// src/services/solicitudService.js
+// src/services/solicitudService.js - CORREGIDO
 import { supabase } from './supabase'
 
-export const solicitudService = {
+export const requestsService = {
   // Obtener todas las solicitudes (filtradas por RLS según el rol)
   async getSolicitudes(filters = {}) {
     let query = supabase
       .from('solicitudes_medicamentos')
       .select(`
         *,
-        productos(nombre, laboratorio, precio, cantidad, presentacion),
-        perfiles!solicitudes_medicamentos_solicitante_id_fkey(nombre),
-        aprobador:perfiles!solicitudes_medicamentos_aprobado_por_fkey(nombre),
-        entregador:perfiles!solicitudes_medicamentos_entregado_por_fkey(nombre)
+        productos(nombre, laboratorio, precio, cantidad, presentacion)
       `)
       .order('fecha_solicitud', { ascending: false })
 
@@ -28,6 +25,9 @@ export const solicitudService = {
     }
 
     const { data, error } = await query
+    
+    // Los nombres ya vienen guardados en los campos de texto
+    // solicitante_nombre, aprobado_por_nombre, entregado_por_nombre
     return { data, error }
   },
 

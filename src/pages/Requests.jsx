@@ -1,7 +1,7 @@
 // src/pages/Solicitudes.jsx
 import React, { useState, useEffect } from 'react'
 import { Plus, Filter, CheckCircle, XCircle, Package, Clock } from 'lucide-react'
-import { solicitudService } from '../services/requestsService'
+import { requestsService } from '../services/requestsService'
 import { useProducts } from '../hooks/useProducts'
 import { useAuth } from '../hooks/useAuth'
 import SolicitudForm from '../components/forms/RequestForm'
@@ -28,7 +28,7 @@ const Requests = () => {
   const fetchSolicitudes = async () => {
     setLoading(true)
     try {
-      const { data, error } = await solicitudService.getSolicitudes(filters)
+      const { data, error } = await requestsService.getSolicitudes(filters)
       if (error) throw error
       setSolicitudes(data || [])
     } catch (error) {
@@ -41,7 +41,7 @@ const Requests = () => {
 
   const fetchStats = async () => {
     try {
-      const { data, error } = await solicitudService.getEstadisticas()
+      const { data, error } = await requestsService.getEstadisticas()
       if (error) throw error
       setStats(data)
     } catch (error) {
@@ -51,7 +51,7 @@ const Requests = () => {
 
   const handleCreateSolicitud = async (solicitudData) => {
     try {
-      const { data, error } = await solicitudService.createSolicitud(solicitudData)
+      const { data, error } = await requestsService.createSolicitud(solicitudData)
       
       if (error) {
         throw error
@@ -75,7 +75,7 @@ const Requests = () => {
     if (notas === null) return // Cancelado
 
     try {
-      const { error } = await solicitudService.aprobarSolicitud(solicitudId, notas)
+      const { error } = await requestsService.aprobarSolicitud(solicitudId, notas)
       if (error) throw error
       
       toast.success('Solicitud aprobada')
@@ -95,7 +95,7 @@ const Requests = () => {
     }
 
     try {
-      const { error } = await solicitudService.rechazarSolicitud(solicitudId, razon)
+      const { error } = await requestsService.rechazarSolicitud(solicitudId, razon)
       if (error) throw error
       
       toast.success('Solicitud rechazada')
@@ -112,7 +112,7 @@ const Requests = () => {
     if (notas === null) return // Cancelado
 
     try {
-      const { error } = await solicitudService.entregarSolicitud(solicitudId, notas)
+      const { error } = await requestsService.entregarSolicitud(solicitudId, notas)
       if (error) throw error
       
       toast.success('Medicamento entregado exitosamente')
@@ -128,7 +128,7 @@ const Requests = () => {
     if (!confirm('¿Está seguro de cancelar esta solicitud?')) return
 
     try {
-      const { error } = await solicitudService.cancelarSolicitud(solicitudId)
+      const { error } = await requestsService.cancelarSolicitud(solicitudId)
       if (error) throw error
       
       toast.success('Solicitud cancelada')
