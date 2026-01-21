@@ -1,4 +1,4 @@
-// src/App.jsx - Actualizado con ruta de usuarios
+// src/App.jsx - ACTUALIZADO con nuevas rutas
 import React from 'react'
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
@@ -9,6 +9,8 @@ import Products from './pages/Products'
 import Movements from './pages/Movements'
 import Reports from './pages/Reports'
 import UsersAdmin from './pages/UsersAdmin'
+import Requests from './pages/Requests'
+import PermisosAdmin from './pages/AdminPermissions'
 import Login from './pages/Login'
 import NotFound from './pages/NotFound'
 
@@ -33,13 +35,22 @@ function App() {
             <Route path="productos" element={<Products />} />
             <Route path="movimientos" element={<Movements />} />
             <Route path="reportes" element={<Reports />} />
+            <Route path="solicitudes" element={<Requests />} />
             
-            {/* Ruta solo para administradores */}
+            {/* Rutas solo para administradores */}
             <Route 
               path="usuarios" 
               element={
                 <ProtectedRoute requireAdmin={true}>
                   <UsersAdmin />
+                </ProtectedRoute>
+              } 
+            />
+            <Route 
+              path="permisos" 
+              element={
+                <ProtectedRoute requireAdmin={true}>
+                  <PermisosAdmin />
                 </ProtectedRoute>
               } 
             />

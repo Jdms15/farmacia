@@ -1,4 +1,4 @@
-// src/components/layout/Sidebar.jsx
+// src/components/layout/Sidebar.jsx - ACTUALIZADO
 import React from 'react'
 import { NavLink } from 'react-router-dom'
 import { 
@@ -8,7 +8,9 @@ import {
   FileText, 
   Users,
   AlertTriangle,
-  X
+  X,
+  ClipboardList,
+  Shield
 } from 'lucide-react'
 import { useAuth } from '../../hooks/useAuth'
 import { useAlerts } from '../../hooks/useAlerts'
@@ -35,19 +37,32 @@ const Sidebar = ({ onClose, isMobile }) => {
       icon: ArrowLeftRight
     },
     {
+      name: 'Solicitudes',
+      href: '/solicitudes',
+      icon: ClipboardList,
+      badge: 'new'
+    },
+    {
       name: 'Reportes',
       href: '/reportes',
       icon: FileText
     }
   ]
 
-  // Agregar usuarios solo para administradores
+  // Agregar rutas de administración solo para administradores
   if (isAdmin) {
-    navigationItems.push({
-      name: 'Usuarios',
-      href: '/usuarios',
-      icon: Users
-    })
+    navigationItems.push(
+      {
+        name: 'Usuarios',
+        href: '/usuarios',
+        icon: Users
+      },
+      {
+        name: 'Permisos',
+        href: '/permisos',
+        icon: Shield
+      }
+    )
   }
 
   const handleLinkClick = () => {
@@ -102,13 +117,25 @@ const Sidebar = ({ onClose, isMobile }) => {
             >
               <item.icon size={20} />
               <span className="font-medium">{item.name}</span>
+              
+              {/* Badges */}
               {item.name === 'Productos' && totalAlerts > 0 && (
                 <span className="ml-auto bg-red-500 text-xs rounded-full px-2 py-1">
                   {totalAlerts}
                 </span>
               )}
+              {item.badge === 'new' && (
+                <span className="ml-auto bg-green-500 text-xs rounded-full px-2 py-1">
+                  NEW
+                </span>
+              )}
               {item.name === 'Usuarios' && isAdmin && (
                 <span className="ml-auto bg-purple-500 text-xs rounded-full px-2 py-1">
+                  Admin
+                </span>
+              )}
+              {item.name === 'Permisos' && isAdmin && (
+                <span className="ml-auto bg-yellow-500 text-xs rounded-full px-2 py-1">
                   Admin
                 </span>
               )}
@@ -121,7 +148,7 @@ const Sidebar = ({ onClose, isMobile }) => {
       <div className="mt-auto p-4 border-t border-gray-800">
         <div className="text-xs text-gray-400 text-center">
           <p>© 2025 InvFarm</p>
-          <p>Versión 1.0.0</p>
+          <p>Versión 2.0.0</p>
           <p>Developed by Bytes-co</p>
           {isAdmin && (
             <p className="text-purple-400 font-medium mt-1">

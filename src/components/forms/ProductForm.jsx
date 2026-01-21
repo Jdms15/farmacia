@@ -1,4 +1,4 @@
-// src/components/forms/ProductForm.jsx
+// src/components/forms/ProductForm.jsx - ACTUALIZADO CON PRECIO
 import React from 'react'
 import { useForm } from 'react-hook-form'
 import { yupResolver } from '@hookform/resolvers/yup'
@@ -12,6 +12,7 @@ const schema = yup.object({
   laboratorio: yup.string().required('Laboratorio es requerido'),
   proveedor: yup.string().required('Proveedor es requerido'),
   cantidad: yup.number().min(0, 'La cantidad no puede ser negativa').required('Cantidad es requerida'),
+  precio: yup.number().min(0, 'El precio no puede ser negativo').required('Precio es requerido'),
   presentacion: yup.string().required('Presentación es requerida'),
   lote: yup.string().required('Lote es requerido'),
   fecha_entrada: yup.date().required('Fecha de entrada es requerida'),
@@ -41,10 +42,12 @@ const ProductForm = ({ product, onSave, onCancel }) => {
     fecha_fabricacion: formatDateForInput(product.fecha_fabricacion),
     fecha_vencimiento: formatDateForInput(product.fecha_vencimiento),
     cantidad: Number(product.cantidad) || 0,
+    precio: Number(product.precio) || 0,
     stock_minimo: Number(product.stock_minimo) || 5,
     necesita_refrigeracion: Boolean(product.necesita_refrigeracion)
   } : {
     cantidad: 0,
+    precio: 0,
     necesita_refrigeracion: false,
     stock_minimo: 5,
     fecha_entrada: new Date().toISOString().split('T')[0]
@@ -53,11 +56,16 @@ const ProductForm = ({ product, onSave, onCancel }) => {
   const {
     register,
     handleSubmit,
+    watch,
     formState: { errors, isSubmitting }
   } = useForm({
     resolver: yupResolver(schema),
     defaultValues
   })
+
+  const cantidad = watch('cantidad')
+  const precio = watch('precio')
+  const valorTotal = (Number(cantidad) || 0) * (Number(precio) || 0)
 
   const onSubmit = async (data) => {
     try {
@@ -67,6 +75,7 @@ const ProductForm = ({ product, onSave, onCancel }) => {
         laboratorio: data.laboratorio.trim(),
         proveedor: data.proveedor.trim(),
         cantidad: Number(data.cantidad),
+        precio: Number(data.precio),
         presentacion: data.presentacion.trim(),
         lote: data.lote.trim(),
         fecha_entrada: data.fecha_entrada,
@@ -127,6 +136,32 @@ const ProductForm = ({ product, onSave, onCancel }) => {
           placeholder="0"
           helperText="Puede ser 0 si no hay stock disponible"
         />
+
+        <Input
+          label="Precio unitario ($)"
+          type="number"
+          min="0"
+          step="0.01"
+          {...register('precio', { valueAsNumber: true })}
+          error={errors.precio?.message}
+          required
+          placeholder="0.00"
+          helperText="Precio de venta por unidad"
+        />
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Valor total inventario
+          </label>
+          <div className="px-3 py-2 bg-gray-50 border border-gray-300 rounded-md">
+            <span className="text-lg font-bold text-green-600">
+              ${valorTotal.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}
+            </span>
+          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            Cantidad × Precio = Valor total
+          </p>
+        </div>
 
         <Input
           label="Presentación"
