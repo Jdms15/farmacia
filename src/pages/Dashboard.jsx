@@ -1,4 +1,4 @@
-// src/pages/Dashboard.jsx
+// src/pages/Dashboard.jsx - ACTUALIZADO con análisis de rotación
 import React, { useEffect, useState } from 'react'
 import { useProducts } from '../hooks/useProducts'
 import { useAlerts } from '../hooks/useAlerts'
@@ -7,6 +7,7 @@ import MetricsCards from '../components/dashboard/MetricsCards'
 import Charts from '../components/dashboard/Charts'
 import AlertsPanel from '../components/dashboard/AlertsPanel'
 import RecentMovements from '../components/dashboard/RecentMovements'
+import ProductRotation from '../components/dashboard/ProductRotation'
 import _ from 'lodash'
 
 const Dashboard = () => {
@@ -89,6 +90,12 @@ const Dashboard = () => {
         productsByLaboratory={productsByLaboratory}
         expirationData={expirationData}
       />
+      
+      {/* ✨ NUEVO: Análisis de rotación de productos */}
+      <div className="mb-8">
+        <ProductRotation />
+      </div>
+      
       <AlertsPanel alerts={alerts} />
       <RecentMovements movements={recentMovements} />
     </div>
