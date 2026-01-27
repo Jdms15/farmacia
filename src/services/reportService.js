@@ -1,33 +1,45 @@
-// src/services/reportService.js - Versión con filtro de producto
+// src/services/reportService.js - CON PRECIOS Y DOCUMENTO DE DESPACHO
 import { supabase } from './supabase'
 import { productService } from './productService'
 import { movementService } from './movementService'
 
 export const reportService = {
-  // Generar reporte de inventario
+  // Generar reporte de inventario CON PRECIOS
   async generateInventoryReport(format = 'csv') {
     try {
       const { data: products, error } = await productService.getProducts()
       if (error) throw error
 
-      const reportData = products.map(product => ({
-        'Nombre': product.nombre,
-        'Laboratorio': product.laboratorio,
-        'Proveedor': product.proveedor,
-        'Lote': product.lote,
-        'Cantidad': product.cantidad,
-        'Presentación': product.presentacion,
-        'Ubicación': product.ubicacion,
-        'Vencimiento': new Date(product.fecha_vencimiento).toLocaleDateString('es-CO'),
-        'Stock Mínimo': product.stock_minimo,
-        'Refrigeración': product.necesita_refrigeracion ? 'Sí' : 'No',
-        'Estado': this.getProductStatus(product)
-      }))
+      const reportData = products.map(product => {
+        const precioUnitario = product.precio || 0
+        const valorTotal = product.cantidad * precioUnitario
+        
+        return {
+          'Nombre': product.nombre,
+          'Laboratorio': product.laboratorio,
+          'Proveedor': product.proveedor,
+          'Lote': product.lote,
+          'Cantidad': product.cantidad,
+          'Precio Unitario': `$${precioUnitario.toFixed(2)}`,
+          'Valor Total': `$${valorTotal.toFixed(2)}`,
+          'Presentación': product.presentacion,
+          'Ubicación': product.ubicacion,
+          'Vencimiento': new Date(product.fecha_vencimiento).toLocaleDateString('es-CO'),
+          'Stock Mínimo': product.stock_minimo,
+          'Refrigeración': product.necesita_refrigeracion ? 'Sí' : 'No',
+          'Estado': this.getProductStatus(product)
+        }
+      })
+
+      // Calcular totales generales
+      const valorTotalInventario = products.reduce((sum, p) => 
+        sum + (p.cantidad * (p.precio || 0)), 0
+      )
 
       if (format === 'excel' || format === 'csv') {
-        return this.exportToCSV(reportData, 'Inventario_Completo')
+        return this.exportInventoryToCSV(reportData, valorTotalInventario)
       } else if (format === 'pdf') {
-        return this.exportInventoryToPDF(reportData)
+        return this.exportInventoryToPDF(reportData, valorTotalInventario)
       }
 
       return { success: true, data: reportData }
@@ -45,7 +57,6 @@ export const reportService = {
         fechaFin: endDate
       }
       
-      // Agregar filtro de producto si existe
       if (productoId) {
         filters.productoId = productoId
       }
@@ -63,7 +74,6 @@ export const reportService = {
         'Motivo': movement.motivo || 'No especificado'
       }))
 
-      // Agregar resumen
       const summary = {
         totalMovimientos: movements.length,
         totalEntradas: movements.filter(m => m.tipo === 'entrada').length,
@@ -72,7 +82,6 @@ export const reportService = {
         unidadesSalida: movements.filter(m => m.tipo === 'salida').reduce((sum, m) => sum + m.cantidad, 0)
       }
       
-      // Obtener nombre del producto si hay filtro
       let productName = ''
       if (productoId) {
         const { data: product } = await supabase
@@ -111,7 +120,6 @@ export const reportService = {
         expired: []
       }
 
-      // Obtener productos vencidos
       const { data: products } = await productService.getProducts()
       if (products) {
         alertsData.expired = products.filter(p => new Date(p.fecha_vencimiento) < new Date())
@@ -126,6 +134,380 @@ export const reportService = {
       return { success: true, data: alertsData }
     } catch (error) {
       console.error('Error generating alerts report:', error)
+      return { success: false, error: error.message }
+    }
+  },
+
+  // ✨ NUEVO: Generar documento de despacho/entrega
+  async generateDeliveryDocument(solicitudId) {
+    try {
+      // Obtener información completa de la solicitud
+      const { data: solicitud, error } = await supabase
+        .from('solicitudes_medicamentos')
+        .select(`
+          *,
+          productos(nombre, laboratorio, presentacion, precio, lote)
+        `)
+        .eq('id', solicitudId)
+        .single()
+
+      if (error) throw error
+      if (!solicitud) throw new Error('Solicitud no encontrada')
+
+      const now = new Date()
+      const precioUnitario = solicitud.precio_unitario || solicitud.productos?.precio || 0
+      const subtotal = solicitud.cantidad * precioUnitario
+      
+      // Generar HTML para el documento
+      const htmlContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Comprobante de Despacho #${solicitud.id.substring(0, 8).toUpperCase()}</title>
+          <meta charset="utf-8">
+          <style>
+            * {
+              margin: 0;
+              padding: 0;
+              box-sizing: border-box;
+            }
+            body {
+              font-family: 'Arial', 'Helvetica', sans-serif;
+              padding: 40px;
+              line-height: 1.6;
+              color: #1F2937;
+            }
+            .header {
+              text-align: center;
+              border-bottom: 3px solid #1F2937;
+              padding-bottom: 20px;
+              margin-bottom: 30px;
+            }
+            .header h1 {
+              color: #1F2937;
+              font-size: 28px;
+              margin-bottom: 10px;
+              text-transform: uppercase;
+              letter-spacing: 1px;
+            }
+            .header .doc-number {
+              color: #1F2937;
+              font-size: 20px;
+              font-weight: bold;
+              background-color: #F3F4F6;
+              padding: 8px 16px;
+              border-radius: 4px;
+              display: inline-block;
+            }
+            .info-section {
+              margin-bottom: 30px;
+            }
+            .info-row {
+              display: flex;
+              margin-bottom: 10px;
+              border-bottom: 1px solid #E5E7EB;
+              padding-bottom: 8px;
+            }
+            .info-label {
+              font-weight: bold;
+              color: #4B5563;
+              min-width: 180px;
+            }
+            .info-value {
+              color: #1F2937;
+              flex: 1;
+            }
+            .products-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 30px 0;
+              border: 2px solid #1F2937;
+            }
+            .products-table th {
+              background-color: #1F2937;
+              color: white;
+              padding: 12px;
+              text-align: left;
+              font-weight: 600;
+              border: 1px solid #1F2937;
+            }
+            .products-table td {
+              padding: 12px;
+              border: 1px solid #9CA3AF;
+            }
+            .products-table tr:nth-child(even) {
+              background-color: #F9FAFB;
+            }
+            .total-section {
+              margin-top: 30px;
+              padding: 20px;
+              background-color: #F3F4F6;
+              border: 2px solid #1F2937;
+              border-radius: 4px;
+            }
+            .total-row {
+              display: flex;
+              justify-content: space-between;
+              margin-bottom: 10px;
+              font-size: 16px;
+            }
+            .total-row.grand-total {
+              font-size: 24px;
+              font-weight: bold;
+              color: #1F2937;
+              border-top: 2px solid #1F2937;
+              padding-top: 15px;
+              margin-top: 15px;
+            }
+            .signatures {
+              margin-top: 80px;
+              display: flex;
+              justify-content: space-between;
+            }
+            .signature-box {
+              width: 45%;
+              text-align: center;
+            }
+            .signature-line {
+              border-top: 2px solid #1F2937;
+              margin-bottom: 10px;
+              padding-top: 5px;
+              margin-top: 60px;
+            }
+            .footer {
+              margin-top: 40px;
+              text-align: center;
+              font-size: 11px;
+              color: #6B7280;
+              border-top: 1px solid #E5E7EB;
+              padding-top: 20px;
+            }
+            .status-badge {
+              display: inline-block;
+              padding: 6px 12px;
+              border: 2px solid #1F2937;
+              font-size: 14px;
+              font-weight: 600;
+              text-transform: uppercase;
+            }
+            .priority-badge {
+              display: inline-block;
+              padding: 4px 8px;
+              border: 1px solid #6B7280;
+              font-size: 12px;
+              font-weight: 600;
+              text-transform: uppercase;
+            }
+            h2 {
+              color: #1F2937;
+              border-bottom: 2px solid #E5E7EB;
+              padding-bottom: 8px;
+              margin-bottom: 15px;
+              text-transform: uppercase;
+              font-size: 16px;
+              letter-spacing: 0.5px;
+            }
+            @media print {
+              body { padding: 20px; }
+              .no-print { display: none; }
+            }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>COMPROBANTE DE DESPACHO</h1>
+            <p class="doc-number">N° ${solicitud.id.substring(0, 8).toUpperCase()}</p>
+            <p style="color: #6B7280; margin-top: 10px; font-size: 13px;">
+              Fecha de emisión: ${now.toLocaleDateString('es-CO', { 
+                year: 'numeric', 
+                month: 'long', 
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              })}
+            </p>
+          </div>
+
+          <div class="info-section">
+            <h2>Información General</h2>
+            
+            <div class="info-row">
+              <span class="info-label">Estado:</span>
+              <span class="info-value">
+                <span class="status-badge">ENTREGADA</span>
+              </span>
+            </div>
+
+            <div class="info-row">
+              <span class="info-label">Prioridad:</span>
+              <span class="info-value">
+                <span class="priority-badge">
+                  ${solicitud.prioridad.toUpperCase()}
+                </span>
+              </span>
+            </div>
+
+            <div class="info-row">
+              <span class="info-label">Solicitante:</span>
+              <span class="info-value">${solicitud.solicitante_nombre || 'No especificado'}</span>
+            </div>
+
+            <div class="info-row">
+              <span class="info-label">Fecha de Solicitud:</span>
+              <span class="info-value">${new Date(solicitud.fecha_solicitud).toLocaleString('es-CO')}</span>
+            </div>
+
+            ${solicitud.aprobado_por_nombre ? `
+            <div class="info-row">
+              <span class="info-label">Aprobado por:</span>
+              <span class="info-value">${solicitud.aprobado_por_nombre}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Fecha de Aprobación:</span>
+              <span class="info-value">${new Date(solicitud.fecha_aprobacion).toLocaleString('es-CO')}</span>
+            </div>
+            ` : ''}
+
+            ${solicitud.entregado_por_nombre ? `
+            <div class="info-row">
+              <span class="info-label">Entregado por:</span>
+              <span class="info-value">${solicitud.entregado_por_nombre}</span>
+            </div>
+            <div class="info-row">
+              <span class="info-label">Fecha de Entrega:</span>
+              <span class="info-value">${new Date(solicitud.fecha_entrega).toLocaleString('es-CO')}</span>
+            </div>
+            ` : ''}
+
+            ${solicitud.motivo ? `
+            <div class="info-row">
+              <span class="info-label">Motivo:</span>
+              <span class="info-value">${solicitud.motivo}</span>
+            </div>
+            ` : ''}
+
+            ${solicitud.notas_aprobacion ? `
+            <div class="info-row">
+              <span class="info-label">Notas de Aprobación:</span>
+              <span class="info-value">${solicitud.notas_aprobacion}</span>
+            </div>
+            ` : ''}
+
+            ${solicitud.notas_entrega ? `
+            <div class="info-row">
+              <span class="info-label">Notas de Entrega:</span>
+              <span class="info-value">${solicitud.notas_entrega}</span>
+            </div>
+            ` : ''}
+          </div>
+
+          <h2>Detalle del Despacho</h2>
+          
+          <table class="products-table">
+            <thead>
+              <tr>
+                <th>Producto</th>
+                <th>Laboratorio</th>
+                <th>Presentación</th>
+                <th>Lote</th>
+                <th style="text-align: center;">Cantidad</th>
+                <th style="text-align: right;">Precio Unit.</th>
+                <th style="text-align: right;">Subtotal</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>${solicitud.productos?.nombre || 'N/A'}</strong></td>
+                <td>${solicitud.productos?.laboratorio || 'N/A'}</td>
+                <td>${solicitud.productos?.presentacion || 'N/A'}</td>
+                <td>${solicitud.productos?.lote || 'N/A'}</td>
+                <td style="text-align: center; font-weight: bold;">${solicitud.cantidad}</td>
+                <td style="text-align: right;">$${precioUnitario.toFixed(2)}</td>
+                <td style="text-align: right; font-weight: bold;">$${subtotal.toFixed(2)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="total-section">
+            <div class="total-row">
+              <span>Cantidad Total de Unidades:</span>
+              <span><strong>${solicitud.cantidad} unidad${solicitud.cantidad !== 1 ? 'es' : ''}</strong></span>
+            </div>
+            <div class="total-row grand-total">
+              <span>VALOR TOTAL DEL DESPACHO:</span>
+              <span>$${subtotal.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}</span>
+            </div>
+          </div>
+
+          <div class="signatures">
+            <div class="signature-box">
+              <div class="signature-line">
+                ${solicitud.entregado_por_nombre || '_______________________'}
+              </div>
+              <p><strong>Firma de quien entrega</strong></p>
+              <p style="font-size: 11px; color: #6B7280;">Farmacia</p>
+            </div>
+
+            <div class="signature-box">
+              <div class="signature-line">
+                ${solicitud.solicitante_nombre || '_______________________'}
+              </div>
+              <p><strong>Firma de quien recibe</strong></p>
+              <p style="font-size: 11px; color: #6B7280;">Solicitante</p>
+            </div>
+          </div>
+
+          <div class="footer">
+            <p><strong>Sistema de Inventario Farmacéutico</strong></p>
+            <p>Documento generado automáticamente el ${now.toLocaleString('es-CO')}</p>
+            <p style="margin-top: 10px; font-size: 10px;">Este documento es válido sin firma ni sello</p>
+          </div>
+        </body>
+        </html>
+      `
+
+      // Abrir ventana de impresión/vista previa
+      const printWindow = window.open('', '', 'height=800,width=900')
+      printWindow.document.write(htmlContent)
+      printWindow.document.close()
+      printWindow.focus()
+
+      // Esperar un momento antes de imprimir
+      setTimeout(() => {
+        // El usuario puede decidir si imprime o guarda como PDF
+        printWindow.print()
+      }, 500)
+
+      return { 
+        success: true, 
+        message: 'Documento de despacho generado',
+        data: {
+          solicitudId: solicitud.id,
+          numeroDespacho: solicitud.id.substring(0, 8).toUpperCase(),
+          total: subtotal
+        }
+      }
+    } catch (error) {
+      console.error('Error generando documento de despacho:', error)
+      return { success: false, error: error.message }
+    }
+  },
+
+  // Exportar inventario a CSV CON TOTALES
+  exportInventoryToCSV(data, valorTotal) {
+    try {
+      let csvContent = 'REPORTE DE INVENTARIO\n'
+      csvContent += `Generado,${new Date().toLocaleString('es-CO')}\n\n`
+      csvContent += `VALOR TOTAL DEL INVENTARIO,$${valorTotal.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}\n\n`
+      csvContent += this.convertToCSV(data)
+      
+      const blob = new Blob(['\uFEFF' + csvContent], { 
+        type: 'text/csv;charset=utf-8;' 
+      })
+      this.downloadFile(blob, `Inventario_${this.getDateString()}.csv`)
+      return { success: true }
+    } catch (error) {
+      console.error('Error exporting inventory to CSV:', error)
       return { success: false, error: error.message }
     }
   },
@@ -148,11 +530,9 @@ export const reportService = {
   // Exportar movimientos a CSV con resumen y filtro de producto
   exportMovementsToCSV(data, summary, startDate, endDate, productName = '') {
     try {
-      // Crear contenido CSV con resumen al inicio
       let csvContent = 'REPORTE DE MOVIMIENTOS\n\n'
       csvContent += `Período,${startDate} a ${endDate}\n`
       
-      // Agregar filtro de producto si existe
       if (productName) {
         csvContent += `Producto,${productName}\n`
       } else {
@@ -193,7 +573,6 @@ export const reportService = {
       let csvContent = 'REPORTE DE ALERTAS\n'
       csvContent += `Generado,${new Date().toLocaleString('es-CO')}\n\n`
       
-      // Productos vencidos
       if (alertsData.expired.length > 0) {
         csvContent += `PRODUCTOS VENCIDOS (${alertsData.expired.length})\n`
         csvContent += 'Producto,Laboratorio,Lote,Fecha Vencimiento,Ubicación,Cantidad\n'
@@ -203,7 +582,6 @@ export const reportService = {
         csvContent += '\n'
       }
       
-      // Próximos a vencer
       if (alertsData.nearExpiry.length > 0) {
         csvContent += `PRÓXIMOS A VENCER (${alertsData.nearExpiry.length})\n`
         csvContent += 'Producto,Laboratorio,Lote,Fecha Vencimiento,Días para vencer,Ubicación,Cantidad\n'
@@ -214,7 +592,6 @@ export const reportService = {
         csvContent += '\n'
       }
       
-      // Bajo stock
       if (alertsData.lowStock.length > 0) {
         csvContent += `BAJO STOCK (${alertsData.lowStock.length})\n`
         csvContent += 'Producto,Laboratorio,Stock Actual,Stock Mínimo,Diferencia,Ubicación\n'
@@ -223,7 +600,6 @@ export const reportService = {
         })
       }
       
-      // Si no hay alertas
       if (alertsData.expired.length === 0 && alertsData.nearExpiry.length === 0 && alertsData.lowStock.length === 0) {
         csvContent += 'No hay alertas activas en este momento\n'
       }
@@ -250,7 +626,6 @@ export const reportService = {
       ...data.map(row => 
         headers.map(header => {
           const value = row[header]
-          // Escapar valores con comas, comillas o saltos de línea
           if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
             return `"${value.replace(/"/g, '""')}"`
           }
@@ -291,8 +666,8 @@ export const reportService = {
     return new Date().toISOString().split('T')[0]
   },
 
-  // Exportar inventario a PDF
-  exportInventoryToPDF(data) {
+  // Exportar inventario a PDF CON PRECIOS
+  exportInventoryToPDF(data, valorTotal) {
     try {
       let htmlContent = `
         <!DOCTYPE html>
@@ -303,12 +678,14 @@ export const reportService = {
             body { font-family: Arial, sans-serif; padding: 20px; }
             h1 { color: #333; text-align: center; }
             .header { text-align: center; margin-bottom: 30px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 11px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 10px; }
             th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }
             th { background-color: #3B82F6; color: white; }
             tr:nth-child(even) { background-color: #f2f2f2; }
             .date { color: #666; font-size: 14px; }
             .summary { background: #f5f5f5; padding: 15px; margin: 20px 0; border-radius: 5px; }
+            .total { font-size: 20px; font-weight: bold; color: #059669; }
+            .text-right { text-align: right; }
           </style>
         </head>
         <body>
@@ -316,7 +693,8 @@ export const reportService = {
             <h1>Reporte de Inventario Farmacéutico</h1>
             <p class="date">Generado: ${new Date().toLocaleString('es-CO')}</p>
             <div class="summary">
-              <strong>Total de productos: ${data.length}</strong>
+              <strong>Total de productos: ${data.length}</strong><br>
+              <span class="total">Valor Total del Inventario: $${valorTotal.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}</span>
             </div>
           </div>
           <table>
@@ -325,6 +703,8 @@ export const reportService = {
               <th>Laboratorio</th>
               <th>Lote</th>
               <th>Cantidad</th>
+              <th>Precio Unit.</th>
+              <th>Valor Total</th>
               <th>Vencimiento</th>
               <th>Ubicación</th>
               <th>Estado</th>
@@ -334,7 +714,9 @@ export const reportService = {
                 <td>${item.Nombre}</td>
                 <td>${item.Laboratorio}</td>
                 <td>${item.Lote}</td>
-                <td>${item.Cantidad}</td>
+                <td class="text-right">${item.Cantidad}</td>
+                <td class="text-right">${item['Precio Unitario']}</td>
+                <td class="text-right"><strong>${item['Valor Total']}</strong></td>
                 <td>${item.Vencimiento}</td>
                 <td>${item.Ubicación}</td>
                 <td>${item.Estado}</td>
@@ -361,7 +743,7 @@ export const reportService = {
     }
   },
 
-  // Exportar movimientos a PDF con filtro de producto
+  // Exportar movimientos a PDF
   exportMovementsToPDF(data, summary, startDate, endDate, productName = '') {
     try {
       let htmlContent = `
@@ -459,7 +841,6 @@ export const reportService = {
           <p style="text-align: center;">Generado: ${new Date().toLocaleString('es-CO')}</p>
       `
       
-      // Productos vencidos
       if (alertsData.expired.length > 0) {
         htmlContent += `
           <h2 class="expired">Productos Vencidos (${alertsData.expired.length})</h2>
@@ -484,7 +865,6 @@ export const reportService = {
         `
       }
       
-      // Próximos a vencer
       if (alertsData.nearExpiry.length > 0) {
         htmlContent += `
           <h2 class="warning">Próximos a Vencer (${alertsData.nearExpiry.length})</h2>
@@ -512,7 +892,6 @@ export const reportService = {
         `
       }
       
-      // Bajo stock
       if (alertsData.lowStock.length > 0) {
         htmlContent += `
           <h2 class="danger">Bajo Stock (${alertsData.lowStock.length})</h2>
@@ -537,7 +916,6 @@ export const reportService = {
         `
       }
       
-      // Si no hay alertas
       if (alertsData.expired.length === 0 && alertsData.nearExpiry.length === 0 && alertsData.lowStock.length === 0) {
         htmlContent += '<p style="text-align: center; margin-top: 50px; color: #059669; font-size: 18px;"><strong>🎉 No hay alertas activas en este momento</strong></p>'
       }

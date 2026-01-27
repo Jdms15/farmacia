@@ -1,9 +1,11 @@
-// src/components/solicitudes/RequestsList.jsx
+// src/components/requests/RequestsList.jsx - CON DOCUMENTO DE DESPACHO
 import React from 'react'
-import { CheckCircle, XCircle, Package, Clock, AlertCircle } from 'lucide-react'
+import { CheckCircle, XCircle, Package, Clock, AlertCircle, FileText } from 'lucide-react'
+import { reportService } from '../../services/reportService'
 import Table from '../ui/Table'
 import Badge from '../ui/Badge'
 import Button from '../ui/Button'
+import toast from 'react-hot-toast'
 
 const RequestsList = ({ 
   solicitudes, 
@@ -55,6 +57,24 @@ const RequestsList = ({
         {config.icon} {prioridad.charAt(0).toUpperCase() + prioridad.slice(1)}
       </Badge>
     )
+  }
+
+  // ✨ NUEVA FUNCIÓN: Generar documento de despacho
+  const handleGenerateDeliveryDoc = async (solicitudId) => {
+    try {
+      toast.loading('Generando documento de despacho...', { id: 'delivery-doc' })
+      
+      const result = await reportService.generateDeliveryDocument(solicitudId)
+      
+      if (result.success) {
+        toast.success('Documento generado exitosamente', { id: 'delivery-doc' })
+      } else {
+        throw new Error(result.error || 'Error al generar documento')
+      }
+    } catch (error) {
+      console.error('Error generando documento:', error)
+      toast.error('Error: ' + error.message, { id: 'delivery-doc' })
+    }
   }
 
   const columns = [
@@ -175,6 +195,25 @@ const RequestsList = ({
                   </Button>
                 )}
 
+                {/* ✨ NUEVO: Botón para generar documento de despacho */}
+                {row.estado === 'entregada' && (
+                  <div className="space-y-2">
+                    <Badge variant="success" size="sm">
+                      ✓ Completada
+                    </Badge>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleGenerateDeliveryDoc(row.id)}
+                      className="flex items-center space-x-1 text-blue-600 hover:bg-blue-50"
+                      title="Generar documento de despacho"
+                    >
+                      <FileText size={14} />
+                      <span>Doc. Despacho</span>
+                    </Button>
+                  </div>
+                )}
+
                 {/* Botones para solicitante */}
                 {row.estado === 'pendiente' && isSolicitante && (
                   <Button
@@ -188,12 +227,6 @@ const RequestsList = ({
                   </Button>
                 )}
               </>
-            )}
-
-            {row.estado === 'entregada' && (
-              <Badge variant="success" size="sm">
-                ✓ Completada
-              </Badge>
             )}
           </div>
         )
@@ -222,11 +255,23 @@ const RequestsList = ({
           </p>
         </div>
       ) : (
-        <Table
-          columns={columns}
-          data={solicitudes}
-          className="min-h-96"
-        />
+        <>
+          {/* Info sobre documento de despacho */}
+          <div className="p-4 bg-blue-50 border-b border-blue-200">
+            <div className="flex items-start space-x-3">
+              <FileText size={16} className="text-blue-600 mt-0.5" />
+              <div className="text-sm text-blue-800">
+                <p><strong>Documento de Despacho:</strong> Para solicitudes entregadas, puedes generar un comprobante con el detalle del despacho y el costo total.</p>
+              </div>
+            </div>
+          </div>
+
+          <Table
+            columns={columns}
+            data={solicitudes}
+            className="min-h-96"
+          />
+        </>
       )}
     </div>
   )
