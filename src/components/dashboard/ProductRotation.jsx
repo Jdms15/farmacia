@@ -1,28 +1,37 @@
-// src/components/dashboard/ProductRotation.jsx - Top 10 de rotación de productos
+// src/components/dashboard/ProductRotationWithFilters.jsx - Con filtros de fecha
 import React, { useState, useEffect } from 'react'
-import { TrendingUp, TrendingDown, BarChart3, Package, AlertCircle, Activity } from 'lucide-react'
+import { TrendingUp, TrendingDown, BarChart3, Package, AlertCircle, Activity, Calendar, Filter } from 'lucide-react'
 import { statsService } from '../../services/statsService'
 import Card from '../ui/Card'
 import Badge from '../ui/Badge'
+import Input from '../ui/Input'
+import Button from '../ui/Button'
 
 const ProductRotation = () => {
   const [topProducts, setTopProducts] = useState([])
   const [lowProducts, setLowProducts] = useState([])
   const [summary, setSummary] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState('top') // 'top' o 'low'
+  const [activeTab, setActiveTab] = useState('top')
+  
+  // Estados para filtros de fecha
+  const [dateFilters, setDateFilters] = useState({
+    fechaInicio: '',
+    fechaFin: ''
+  })
+  const [showFilters, setShowFilters] = useState(false)
 
   useEffect(() => {
     fetchRotationData()
-  }, [])
+  }, [dateFilters])
 
   const fetchRotationData = async () => {
     setLoading(true)
     try {
       const [topResult, lowResult, summaryResult] = await Promise.all([
-        statsService.getTopRotatingProducts(10),
-        statsService.getLowRotatingProducts(10),
-        statsService.getRotationSummary()
+        statsService.getTopRotatingProducts(10, dateFilters),
+        statsService.getLowRotatingProducts(10, dateFilters),
+        statsService.getRotationSummary(dateFilters)
       ])
 
       if (topResult.data) setTopProducts(topResult.data)
@@ -34,6 +43,33 @@ const ProductRotation = () => {
       setLoading(false)
     }
   }
+
+  const handleDateFilterChange = (field, value) => {
+    setDateFilters(prev => ({
+      ...prev,
+      [field]: value
+    }))
+  }
+
+  const clearFilters = () => {
+    setDateFilters({
+      fechaInicio: '',
+      fechaFin: ''
+    })
+  }
+
+  const setQuickFilter = (days) => {
+    const today = new Date()
+    const startDate = new Date()
+    startDate.setDate(today.getDate() - days)
+    
+    setDateFilters({
+      fechaInicio: startDate.toISOString().split('T')[0],
+      fechaFin: today.toISOString().split('T')[0]
+    })
+  }
+
+  const hasActiveFilters = dateFilters.fechaInicio || dateFilters.fechaFin
 
   if (loading) {
     return (
@@ -47,6 +83,117 @@ const ProductRotation = () => {
 
   return (
     <div className="space-y-6">
+      {/* Filtros de fecha */}
+      <Card>
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center space-x-2">
+            <Calendar size={20} className="text-blue-600" />
+            <h3 className="font-semibold text-gray-900">Filtros de Período</h3>
+            {hasActiveFilters && (
+              <Badge variant="info" size="sm">
+                Filtrado
+              </Badge>
+            )}
+          </div>
+          <button
+            onClick={() => setShowFilters(!showFilters)}
+            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+          >
+            {showFilters ? 'Ocultar filtros' : 'Mostrar filtros'}
+          </button>
+        </div>
+
+        {showFilters && (
+          <div className="space-y-4 p-4 bg-gray-50 rounded-lg">
+            {/* Botones rápidos */}
+            <div className="flex flex-wrap gap-2">
+              <span className="text-sm text-gray-600 font-medium self-center">Período rápido:</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setQuickFilter(7)}
+              >
+                Últimos 7 días
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setQuickFilter(30)}
+              >
+                Últimos 30 días
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setQuickFilter(90)}
+              >
+                Últimos 3 meses
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setQuickFilter(180)}
+              >
+                Últimos 6 meses
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setQuickFilter(365)}
+              >
+                Último año
+              </Button>
+            </div>
+
+            {/* Campos de fecha personalizados */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Input
+                label="Fecha inicio"
+                type="date"
+                value={dateFilters.fechaInicio}
+                onChange={(e) => handleDateFilterChange('fechaInicio', e.target.value)}
+                max={dateFilters.fechaFin || new Date().toISOString().split('T')[0]}
+              />
+              <Input
+                label="Fecha fin"
+                type="date"
+                value={dateFilters.fechaFin}
+                onChange={(e) => handleDateFilterChange('fechaFin', e.target.value)}
+                min={dateFilters.fechaInicio}
+                max={new Date().toISOString().split('T')[0]}
+              />
+            </div>
+
+            {/* Botón limpiar */}
+            {hasActiveFilters && (
+              <div className="flex justify-end">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearFilters}
+                  className="flex items-center space-x-2"
+                >
+                  <Filter size={16} />
+                  <span>Limpiar filtros</span>
+                </Button>
+              </div>
+            )}
+
+            {/* Información del período */}
+            {hasActiveFilters && (
+              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <p className="text-sm text-blue-800">
+                  <strong>Período analizado:</strong>{' '}
+                  {dateFilters.fechaInicio ? new Date(dateFilters.fechaInicio).toLocaleDateString('es-CO') : 'Desde el inicio'} 
+                  {' hasta '}
+                  {dateFilters.fechaFin ? new Date(dateFilters.fechaFin).toLocaleDateString('es-CO') : 'hoy'}
+                </p>
+              </div>
+            )}
+          </div>
+        )}
+      </Card>
+
       {/* Resumen General */}
       {summary && (
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -97,7 +244,9 @@ const ProductRotation = () => {
               <div className="ml-4">
                 <p className="text-sm font-medium text-gray-600">Total Movimientos</p>
                 <p className="text-2xl font-bold text-gray-900">{summary.totalMovimientos}</p>
-                <p className="text-xs text-gray-500">registrados</p>
+                <p className="text-xs text-gray-500">
+                  {hasActiveFilters ? 'en el período' : 'registrados'}
+                </p>
               </div>
             </div>
           </Card>
@@ -218,6 +367,11 @@ const ProductRotation = () => {
                 <div className="text-center py-12">
                   <TrendingUp size={48} className="mx-auto text-gray-300 mb-3" />
                   <p className="text-gray-600">No hay datos de rotación disponibles</p>
+                  {hasActiveFilters && (
+                    <p className="text-sm text-gray-500 mt-2">
+                      Intenta ampliar el rango de fechas
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -293,6 +447,11 @@ const ProductRotation = () => {
                 <div className="text-center py-12">
                   <TrendingDown size={48} className="mx-auto text-gray-300 mb-3" />
                   <p className="text-gray-600">No hay datos de rotación disponibles</p>
+                  {hasActiveFilters && (
+                    <p className="text-sm text-gray-500 mt-2">
+                      Intenta ampliar el rango de fechas
+                    </p>
+                  )}
                 </div>
               )}
             </div>
